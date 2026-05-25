@@ -1,0 +1,32 @@
+services:
+  strapi:
+    container_name: strapi
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      args:
+        STRAPI_ADMIN_BACKEND_URL: https://cms.goldenbeautystudio.com.co
+    image: strapi:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_CLIENT: postgres
+      DATABASE_HOST: postgres-transversal
+      DATABASE_PORT: 5432
+      DATABASE_NAME: strapi
+      DATABASE_USERNAME: ${DATABASE_USERNAME}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      APP_KEYS: ${APP_KEYS}
+      API_TOKEN_SALT: ${API_TOKEN_SALT}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      TRANSFER_TOKEN_SALT: ${TRANSFER_TOKEN_SALT}
+    networks:
+      - web
+      - data
+
+networks:
+  web:
+    external: true
+  data:
+    external: true
