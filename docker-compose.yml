@@ -1,12 +1,7 @@
 services:
   strapi:
     container_name: strapi
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-      args:
-        STRAPI_ADMIN_BACKEND_URL: https://cms.goldenbeautystudio.com.co
-    image: strapi:latest
+    image: ghcr.io/mega61/golden-beauty-studio-crm:latest
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -21,6 +16,7 @@ services:
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
       JWT_SECRET: ${JWT_SECRET}
       TRANSFER_TOKEN_SALT: ${TRANSFER_TOKEN_SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     networks:
       - web
       - data
