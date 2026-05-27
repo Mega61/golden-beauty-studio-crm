@@ -8,7 +8,10 @@ const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Server =>
   },
   // Trust X-Forwarded-* from Caddy so Strapi knows requests arrive over HTTPS
   // and will set Secure cookies (required for the SSO OAuth callback).
-  proxy: env.bool('IS_PROXIED', false),
+  // Strapi 5 reads server.proxy.koa — the boolean form does NOT propagate to koa.
+  proxy: {
+    koa: env.bool('IS_PROXIED', false),
+  },
 });
 
 export default config;
