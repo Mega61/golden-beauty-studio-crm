@@ -13,6 +13,10 @@ import {
   parseAgendaProDate,
   parsePrice,
 } from '../../../winback/normalize';
+import {
+  parseAgendaProWorkbook,
+  type AgendaProRawRow,
+} from '../../../winback/agendapro-xlsx';
 
 const CLIENT_UID = 'api::client.client';
 const VISIT_UID = 'api::visit.visit';
@@ -31,20 +35,6 @@ export interface NormalizedBooking {
   source?: 'manual_import' | 'agendapro';
   price_list?: number | null;
   price_real?: number | null;
-}
-
-/** Raw AgendaPro export row, keyed by the Spanish column headers (verbatim). */
-export interface AgendaProRawRow {
-  fecha_realizacion?: string;
-  nombre?: string;
-  apellido?: string;
-  email?: string;
-  telefono?: string;
-  identificacion?: string;
-  servicio?: string;
-  precio_lista?: string | number;
-  precio_real?: string | number;
-  estado?: string;
 }
 
 export interface IngestSummary {
@@ -232,5 +222,15 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     summary.skipped_no_phone = skipped_no_phone;
     summary.skipped_bad_date = skipped_bad_date;
     return summary;
+  },
+
+  /**
+   * Ingest an AgendaPro export workbook from a file path or buffer. The shared entry
+   * point for both the manual script and the automated intake route (P2) — parsing,
+   * normalization, upsert and recompute all stay here. See plan §2.3.
+   */
+  async ingestAgendaProFile(input: string | Buffer): Promise<IngestSummary> {
+    const rows = parseAgendaProWorkbook(input);
+    return this.ingestAgendaProRows(rows);
   },
 });

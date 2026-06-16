@@ -46,6 +46,43 @@ A built-in Strapi cron (`config/cron.ts`) runs `api::visit.winback.recomputeAll`
 at 06:00 `America/Bogota`, so the countdown rolls over without re-importing. It can be
 disabled with `CRON_ENABLED=false`.
 
+## Automated ingestion (production — no manual step)
+
+In production the report can't be uploaded by hand, so ingestion is split in two:
+
+**Ingestion (built, in Strapi).** Two secret-protected intake routes feed the *same*
+upsert + recompute path as the manual script:
+
+- `POST /api/ingest/agendapro-report` — multipart `report=@reservas.xlsx`. Strapi
+  parses + ingests + recomputes. **Primary** path (you end up with a file).
+- `POST /api/ingest/agendapro` — JSON `{ "bookings": [ {normalized}, ... ] }`.
+
+Both require the header `x-ingest-secret: $INGEST_SHARED_SECRET`. The report route
+returns `{ ok, summary }`, or **422** when a non-empty report ingests zero visits
+(fail-loud signal for the caller). Example:
+
+```bash
+curl -H "x-ingest-secret: $INGEST_SHARED_SECRET" \
+     -F "report=@reservas.xlsx" \
+     https://cms.goldenbeautystudio.com.co/api/ingest/agendapro-report
+```
+
+**Acquisition (TODO — blocked on AgendaPro recon, plan §2.0/§2.1).** A small external
+job logs into AgendaPro, downloads the reservas export, and POSTs the file to the route
+above. AgendaPro has **no scheduled/email delivery**, so the job authenticates each run.
+Two candidate implementations, both ending in the same xlsx → same route:
+
+- **Protected-endpoint replay (preferred):** capture the report-download request in
+  DevTools, replay it over plain HTTP with the session cookies. No browser; can run as a
+  GitHub Actions cron or VM cron. Needs the recon capture first.
+- **Playwright (fallback):** drive the browser to log in (handles OTP/JS) and export.
+  Run ephemerally (on-demand Docker / GitHub Actions / locally) — **never steady-state on
+  the VM**.
+
+Because Strapi owns parsing + normalization + upsert, the acquisition job stays a dumb
+"fetch file → POST file" client and the Playwright-vs-endpoint choice can change without
+touching Strapi.
+
 ## Read API
 
 `GET /api/winback/due?within=N&status=en_ventana,por_vencer&consent=true` — authenticated

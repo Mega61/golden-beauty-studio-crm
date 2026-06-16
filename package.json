@@ -23,14 +23,14 @@
     "react-dom": "^18.0.0",
     "react-router-dom": "^6.0.0",
     "strapi-plugin-sso": "^1.0.8",
-    "styled-components": "^6.0.0"
+    "styled-components": "^6.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "typescript": "^5",
-    "xlsx": "^0.18.5"
+    "typescript": "^5"
   },
   "engines": {
     "node": ">=20.0.0 <=24.x.x",
