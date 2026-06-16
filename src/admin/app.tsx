@@ -1,4 +1,6 @@
 import type { StrapiApp } from '@strapi/strapi/admin';
+import { Clock } from '@strapi/icons';
+import WinbackBadge from './components/WinbackBadge';
 
 const SSO_URL = '/strapi-plugin-sso/google';
 const BUTTON_ID = 'gbs-sso-google-button';
@@ -47,6 +49,23 @@ function injectSsoButton(): void {
 export default {
   config: {
     locales: [],
+  },
+  register(app: StrapiApp) {
+    // Surface A — the "Retoques" dashboard page (plan §4.2).
+    app.addMenuLink({
+      to: '/winback',
+      icon: Clock,
+      intlLabel: { id: 'winback.menu.label', defaultMessage: 'Retoques' },
+      permissions: [],
+      Component: () => import('./pages/Winback'),
+    });
+
+    // Surface B — inline retoque badge in the Client edit view (plan §4.3).
+    // 5.46 only renders the `right-links` zone in the edit view's side panels.
+    app.getPlugin('content-manager').injectComponent('editView', 'right-links', {
+      name: 'winback-badge',
+      Component: WinbackBadge,
+    });
   },
   bootstrap(_app: StrapiApp) {
     injectSsoButton();
