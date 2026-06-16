@@ -1,0 +1,33 @@
+{
+  "kind": "collectionType",
+  "collectionName": "reminders",
+  "info": {
+    "singularName": "reminder",
+    "pluralName": "reminders",
+    "displayName": "Reminder",
+    "description": "STUB for the future WhatsApp workstream. Sending is NOT wired in Part 1."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "client": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::client.client"
+    },
+    "due_date": {
+      "type": "date"
+    },
+    "sent_at": {
+      "type": "datetime"
+    },
+    "template": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string"
+    }
+  }
+}
