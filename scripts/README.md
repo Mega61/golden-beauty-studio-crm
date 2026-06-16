@@ -1,0 +1,53 @@
+# Win-back operational scripts
+
+One-shot ops scripts for the retoque / win-back feature (Part 1). Both boot the full
+Strapi app, so they read the database from the **same env vars** the server uses
+(`DATABASE_CLIENT`, `DATABASE_HOST`, …). Run them from the project root.
+
+## `import-export.js` — manual AgendaPro import
+
+Loads an AgendaPro reservations export (`.xlsx`) and upserts Clients + Visits through
+the shared `api::visit.ingest` service, then recomputes every countdown.
+
+```bash
+# against the configured DB (e.g. production Postgres via env)
+node scripts/import-export.js /path/to/reservas.xlsx
+
+# defaults to the latest export under .claude/handoff/ if no path is given
+node scripts/import-export.js
+```
+
+- **Idempotent**: Clients dedupe by `phone`, Visits by a synthesized `booking_id`
+  (`sha1(phone+date+service)`). Re-running changes nothing.
+- A phone seen under more than one name is flagged `needs_review` + `review_note`
+  (dirty AgendaPro data for Mariana to split at the source) — it never blocks.
+- Status mapping: `Asiste → completed`, `Reservado → upcoming`, `Cancelado → cancelled`.
+
+Requires `xlsx` (devDependency). On a machine that ran `npm ci --omit=dev`, install it
+first: `npm i -D xlsx`.
+
+## `stampee-crosscheck.js` — fidelization cross-check
+
+Phone-only match of Stampee customers against Strapi clients; stamps each client
+`matched | sin_tarjeta` and prints the two clean-up lists.
+
+```bash
+node scripts/stampee-crosscheck.js /path/to/customers.json   # defaults to .claude/handoff/customers.json
+```
+
+- Source today is an exported `customers.json` (from Stampee's
+  `GET /customers?include=cards,transactions`). To switch to the live API later, set
+  `STAMPEE_API_URL` + `STAMPEE_TOKEN` and extend `loadCustomers()`.
+- Internal `@goldenbeautystudio.com.co` Stampee logins are excluded automatically.
+
+## Daily recompute
+
+A built-in Strapi cron (`config/cron.ts`) runs `api::visit.winback.recomputeAll` daily
+at 06:00 `America/Bogota`, so the countdown rolls over without re-importing. It can be
+disabled with `CRON_ENABLED=false`.
+
+## Read API
+
+`GET /api/winback/due?within=N&status=en_ventana,por_vencer&consent=true` — authenticated
+(needs an API token or permitted role). Powers the future WhatsApp job; the admin
+**Retoques** dashboard reads clients directly via the Content Manager API.
