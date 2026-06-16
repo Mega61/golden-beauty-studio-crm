@@ -9,6 +9,8 @@ import {
   visitNextRecommended,
   isEligible,
   bogotaToday,
+  addDays,
+  timeRemainingDays,
   type Cadence,
 } from '../../../winback/compute';
 
@@ -98,6 +100,53 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       `[winback] recomputeAll: ${visits.length} visits, ${clients.length} clients`,
     );
     return { visits: visits.length, clients: clients.length };
+  },
+
+  /**
+   * The win-back read model: clients due within `within` days, soonest deadline first,
+   * excluding opted-out. Optional status filter (e.g. `en_ventana,por_vencer`) and a
+   * consent-only filter for the future WhatsApp job. `time_remaining_days` is computed
+   * on read (never stored). See plan §1.6 / §4.2.
+   */
+  async due(opts?: {
+    within?: number;
+    status?: string | string[];
+    consentOnly?: boolean;
+  }): Promise<any[]> {
+    const within = Number.isFinite(opts?.within as number) ? (opts!.within as number) : 7;
+    const today = bogotaToday();
+    const cutoff = addDays(today, within);
+
+    const filters: Record<string, unknown> = {
+      opted_out: { $eq: false },
+      next_recommended_date: { $notNull: true, $lte: cutoff },
+    };
+    if (opts?.status) {
+      const statuses = Array.isArray(opts.status)
+        ? opts.status
+        : String(opts.status).split(',').map((s) => s.trim()).filter(Boolean);
+      if (statuses.length) filters.winback_status = { $in: statuses };
+    }
+    if (opts?.consentOnly) filters.whatsapp_consent = { $eq: true };
+
+    const clients = (await strapi.documents(CLIENT_UID).findMany({
+      filters: filters as any,
+      sort: ['next_recommended_date:asc'] as any,
+      limit: 1000,
+    })) as any[];
+
+    return clients.map((c) => ({
+      documentId: c.documentId,
+      phone: c.phone,
+      full_name: c.full_name,
+      last_visit_date: c.last_visit_date,
+      last_eligible_service: c.last_eligible_service,
+      next_recommended_date: c.next_recommended_date,
+      winback_status: c.winback_status,
+      time_remaining_days: timeRemainingDays(c.next_recommended_date, today),
+      stampee_card: c.stampee_card,
+      needs_review: c.needs_review,
+    }));
   },
 
   /** Page through every document of a collection type (CRM volumes are small). */
