@@ -119,7 +119,13 @@ export default {
     const autocreate =
       !dryRun &&
       (process.env.STAMPEE_AUTOCREATE === 'true' || q.autocreate === '1' || q.autocreate === 'true');
-    const result = await strapi.service('api::client.stampee').syncFromApi({ autocreate, dryRun });
-    ctx.body = { ok: true, result };
+    try {
+      const result = await strapi.service('api::client.stampee').syncFromApi({ autocreate, dryRun });
+      ctx.body = { ok: true, result };
+    } catch (err: any) {
+      strapi.log.error(`[stampee] sync failed: ${err?.message}`);
+      ctx.status = 502;
+      ctx.body = { ok: false, error: err?.message };
+    }
   },
 };

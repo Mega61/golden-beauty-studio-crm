@@ -35,6 +35,7 @@ export function stampeeConfigured(): boolean {
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const c = cfg();
   if (!c) throw new Error('Stampee API not configured (STAMPEE_API_URL / STAMPEE_API_KEY)');
+  const method = init.method ?? 'GET';
   const res = await fetch(`${c.base}${path}`, {
     ...init,
     headers: {
@@ -43,12 +44,31 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(init.headers ?? {}),
     },
   });
-  const json: any = await res.json().catch(() => null);
-  if (!res.ok || !json?.ok) {
-    const msg = json?.error?.message ?? json?.error?.code ?? `HTTP ${res.status}`;
-    throw new Error(`Stampee ${init.method ?? 'GET'} ${path}: ${msg}`);
+
+  const text = await res.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    /* non-JSON body */
   }
-  return json.data as T;
+
+  if (!res.ok) {
+    const msg = json?.error?.message ?? json?.error?.code ?? `HTTP ${res.status}`;
+    throw new Error(`Stampee ${method} ${path}: ${msg} :: ${text.slice(0, 300)}`);
+  }
+  if (json == null) {
+    throw new Error(`Stampee ${method} ${path}: non-JSON body :: ${text.slice(0, 300)}`);
+  }
+  // Accept either the documented `{ ok, data }` envelope or a raw body (array/object).
+  if (typeof json === 'object' && !Array.isArray(json) && 'ok' in json) {
+    if (!json.ok) {
+      const msg = json.error?.message ?? json.error?.code ?? 'not ok';
+      throw new Error(`Stampee ${method} ${path}: ${msg}`);
+    }
+    return json.data as T;
+  }
+  return json as T;
 }
 
 export function listCustomersWithCards(): Promise<StampeeCustomerApi[]> {
