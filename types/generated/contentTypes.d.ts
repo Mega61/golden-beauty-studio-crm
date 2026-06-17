@@ -440,6 +440,168 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiClientClient extends Struct.CollectionTypeSchema {
+  collectionName: 'clients';
+  info: {
+    description: 'A salon client. Deduplicated by phone (canonical identity, Colombia).';
+    displayName: 'Client';
+    pluralName: 'clients';
+    singularName: 'client';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    email: Schema.Attribute.String;
+    full_name: Schema.Attribute.String & Schema.Attribute.Required;
+    id_number: Schema.Attribute.String;
+    last_eligible_service: Schema.Attribute.Enumeration<
+      ['montaje', 'retoque', 'forrado', 'sencillo', 'press_on', 'otro']
+    >;
+    last_visit_date: Schema.Attribute.Date;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::client.client'
+    > &
+      Schema.Attribute.Private;
+    needs_review: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    next_recommended_date: Schema.Attribute.Date;
+    opted_out: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    phone: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    publishedAt: Schema.Attribute.DateTime;
+    review_note: Schema.Attribute.Text;
+    stampee_card: Schema.Attribute.Enumeration<['matched', 'sin_tarjeta']>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    visits: Schema.Attribute.Relation<'oneToMany', 'api::visit.visit'>;
+    whatsapp_consent: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    whatsapp_consent_date: Schema.Attribute.DateTime;
+    winback_status: Schema.Attribute.Enumeration<
+      ['reciente', 'en_ventana', 'por_vencer', 'vencido', 'sin_cadencia']
+    >;
+  };
+}
+
+export interface ApiReminderReminder extends Struct.CollectionTypeSchema {
+  collectionName: 'reminders';
+  info: {
+    description: 'STUB for the future WhatsApp workstream. Sending is NOT wired in Part 1.';
+    displayName: 'Reminder';
+    pluralName: 'reminders';
+    singularName: 'reminder';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    channel: Schema.Attribute.String;
+    client: Schema.Attribute.Relation<'manyToOne', 'api::client.client'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    due_date: Schema.Attribute.Date;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::reminder.reminder'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    sent_at: Schema.Attribute.DateTime;
+    template: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiServiceCadenceServiceCadence
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'service_cadences';
+  info: {
+    description: 'Per-category retoque window config (min/max days). Drives the win-back countdown.';
+    displayName: 'Service Cadence';
+    pluralName: 'service-cadences';
+    singularName: 'service-cadence';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::service-cadence.service-cadence'
+    > &
+      Schema.Attribute.Private;
+    max_days: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<21>;
+    min_days: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<15>;
+    publishedAt: Schema.Attribute.DateTime;
+    service_category: Schema.Attribute.Enumeration<
+      ['montaje', 'retoque', 'forrado', 'sencillo', 'press_on', 'otro']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiVisitVisit extends Struct.CollectionTypeSchema {
+  collectionName: 'visits';
+  info: {
+    description: 'A booking/service from AgendaPro. Idempotency key = booking_id.';
+    displayName: 'Visit';
+    pluralName: 'visits';
+    singularName: 'visit';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    booking_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    client: Schema.Attribute.Relation<'manyToOne', 'api::client.client'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::visit.visit'> &
+      Schema.Attribute.Private;
+    next_recommended_date: Schema.Attribute.Date;
+    price_list: Schema.Attribute.Integer;
+    price_real: Schema.Attribute.Integer;
+    publishedAt: Schema.Attribute.DateTime;
+    service_category: Schema.Attribute.Enumeration<
+      ['montaje', 'retoque', 'forrado', 'sencillo', 'press_on', 'otro']
+    >;
+    service_date: Schema.Attribute.Date & Schema.Attribute.Required;
+    service_name: Schema.Attribute.String;
+    source: Schema.Attribute.Enumeration<['manual_import', 'agendapro']> &
+      Schema.Attribute.DefaultTo<'manual_import'>;
+    status: Schema.Attribute.Enumeration<
+      ['completed', 'upcoming', 'cancelled']
+    >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface PluginContentReleasesRelease
   extends Struct.CollectionTypeSchema {
   collectionName: 'strapi_releases';
@@ -674,6 +836,87 @@ export interface PluginReviewWorkflowsWorkflowStage
       'manyToOne',
       'plugin::review-workflows.workflow'
     >;
+  };
+}
+
+export interface PluginStrapiPluginSsoRoles
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'strapi-plugin-sso_roles';
+  info: {
+    collectionName: 'sso-roles';
+    description: '';
+    displayName: 'sso-role';
+    pluralName: 'sso-roles';
+    singularName: 'roles';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  pluginOptions: {
+    'content-manager': {
+      visible: false;
+    };
+    'content-type-builder': {
+      visible: false;
+    };
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'plugin::strapi-plugin-sso.roles'
+    > &
+      Schema.Attribute.Private;
+    oauth_type: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    roles: Schema.Attribute.JSON;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface PluginStrapiPluginSsoWhitelists
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'strapi-plugin-sso_whitelists';
+  info: {
+    collectionName: 'whitelists';
+    description: '';
+    displayName: 'whitelist';
+    pluralName: 'whitelists';
+    singularName: 'whitelists';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  pluginOptions: {
+    'content-manager': {
+      visible: false;
+    };
+    'content-type-builder': {
+      visible: false;
+    };
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    email: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'plugin::strapi-plugin-sso.whitelists'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
   };
 }
 
@@ -951,11 +1194,17 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::client.client': ApiClientClient;
+      'api::reminder.reminder': ApiReminderReminder;
+      'api::service-cadence.service-cadence': ApiServiceCadenceServiceCadence;
+      'api::visit.visit': ApiVisitVisit;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;
       'plugin::review-workflows.workflow': PluginReviewWorkflowsWorkflow;
       'plugin::review-workflows.workflow-stage': PluginReviewWorkflowsWorkflowStage;
+      'plugin::strapi-plugin-sso.roles': PluginStrapiPluginSsoRoles;
+      'plugin::strapi-plugin-sso.whitelists': PluginStrapiPluginSsoWhitelists;
       'plugin::upload.file': PluginUploadFile;
       'plugin::upload.folder': PluginUploadFolder;
       'plugin::users-permissions.permission': PluginUsersPermissionsPermission;

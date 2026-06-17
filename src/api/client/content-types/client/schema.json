@@ -1,0 +1,73 @@
+{
+  "kind": "collectionType",
+  "collectionName": "clients",
+  "info": {
+    "singularName": "client",
+    "pluralName": "clients",
+    "displayName": "Client",
+    "description": "A salon client. Deduplicated by phone (canonical identity, Colombia)."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "phone": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "full_name": {
+      "type": "string",
+      "required": true
+    },
+    "email": {
+      "type": "string"
+    },
+    "id_number": {
+      "type": "string"
+    },
+    "whatsapp_consent": {
+      "type": "boolean",
+      "default": false
+    },
+    "whatsapp_consent_date": {
+      "type": "datetime"
+    },
+    "opted_out": {
+      "type": "boolean",
+      "default": false
+    },
+    "needs_review": {
+      "type": "boolean",
+      "default": false
+    },
+    "review_note": {
+      "type": "text"
+    },
+    "last_visit_date": {
+      "type": "date"
+    },
+    "last_eligible_service": {
+      "type": "enumeration",
+      "enum": ["montaje", "retoque", "forrado", "sencillo", "press_on", "otro"]
+    },
+    "next_recommended_date": {
+      "type": "date"
+    },
+    "winback_status": {
+      "type": "enumeration",
+      "enum": ["reciente", "en_ventana", "por_vencer", "vencido", "sin_cadencia"]
+    },
+    "stampee_card": {
+      "type": "enumeration",
+      "enum": ["matched", "sin_tarjeta"]
+    },
+    "visits": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::visit.visit",
+      "mappedBy": "client"
+    }
+  }
+}

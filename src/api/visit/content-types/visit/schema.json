@@ -1,0 +1,56 @@
+{
+  "kind": "collectionType",
+  "collectionName": "visits",
+  "info": {
+    "singularName": "visit",
+    "pluralName": "visits",
+    "displayName": "Visit",
+    "description": "A booking/service from AgendaPro. Idempotency key = booking_id."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "booking_id": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "client": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::client.client",
+      "inversedBy": "visits"
+    },
+    "service_name": {
+      "type": "string"
+    },
+    "service_category": {
+      "type": "enumeration",
+      "enum": ["montaje", "retoque", "forrado", "sencillo", "press_on", "otro"]
+    },
+    "service_date": {
+      "type": "date",
+      "required": true
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["completed", "upcoming", "cancelled"]
+    },
+    "source": {
+      "type": "enumeration",
+      "enum": ["manual_import", "agendapro"],
+      "default": "manual_import"
+    },
+    "price_list": {
+      "type": "integer"
+    },
+    "price_real": {
+      "type": "integer"
+    },
+    "next_recommended_date": {
+      "type": "date"
+    }
+  }
+}

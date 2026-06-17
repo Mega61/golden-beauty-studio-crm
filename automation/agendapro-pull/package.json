@@ -1,0 +1,15 @@
+{
+  "name": "agendapro-pull",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Daily AgendaPro reservations pull -> Strapi intake (GitHub Actions cron).",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "pull": "node pull.mjs"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0",
+    "playwright": "^1.48.0"
+  }
+}

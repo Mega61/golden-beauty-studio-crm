@@ -6,6 +6,10 @@ const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Server =>
   app: {
     keys: env.array('APP_KEYS'),
   },
+  // Enable Strapi's built-in cron runner (jobs defined in config/cron.ts).
+  cron: {
+    enabled: env.bool('CRON_ENABLED', true),
+  },
   // Trust X-Forwarded-* from Caddy so Strapi knows requests arrive over HTTPS
   // and will set Secure cookies (required for the SSO OAuth callback).
   // Strapi 5 reads server.proxy.koa — the boolean form does NOT propagate to koa.
