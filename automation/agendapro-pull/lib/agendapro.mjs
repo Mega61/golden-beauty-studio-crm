@@ -55,24 +55,38 @@ async function bearerFromCookies(context) {
   return null;
 }
 
+// The login form has no <label>s — target inputs by name (placeholders:
+// "user@example.com" / "Enter your password"); the submit button reads "Log in"
+// and starts disabled until both fields are filled (Playwright auto-waits for enabled).
+async function isLoggedOut(page) {
+  if (needsLogin(page.url())) return true;
+  const emailFields = await page.locator('input[name="email"]').count().catch(() => 0);
+  return emailFields > 0;
+}
+
 async function doLogin(page, { email, password, getOtp }) {
   console.log('[agendapro] logging in…');
-  await page.getByLabel(/correo|e-?mail/i).first().fill(email);
-  await page.getByLabel(/contrase|password/i).first().fill(password);
+  await page.locator('input[name="email"]').fill(email);
+  await page.locator('input[name="password"]').fill(password);
   const sinceEpochMs = Date.now();
-  await page.getByRole('button', { name: /iniciar|ingresar|sign in|log ?in|continuar/i }).first().click();
+  await page.getByRole('button', { name: /log ?in|iniciar|ingresar|continuar/i }).first().click();
 
-  await page.waitForURL(/two_factor|verif/i, { timeout: 30_000 }).catch(() => {});
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await sleep(2_500);
+
   if (/two_factor|verif/i.test(page.url())) {
     console.log('[agendapro] 2FA prompt detected, fetching code…');
     const code = await getOtp(sinceEpochMs);
     await page.getByRole('textbox').first().fill(code);
-    await page.getByRole('button', { name: /verif|continuar|confirmar|enviar|submit/i }).first().click();
+    await page
+      .getByRole('button', { name: /verif|continuar|confirmar|enviar|submit|log ?in/i })
+      .first()
+      .click();
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await sleep(2_500);
   } else {
-    console.log('[agendapro] no 2FA prompt');
+    console.log('[agendapro] no 2FA prompt; url:', page.url());
   }
-  await page.waitForURL((u) => !needsLogin(u.toString()), { timeout: 30_000 });
-  console.log('[agendapro] post-login url:', page.url());
 }
 
 async function pullReportUrl(request, bearer, windowDays) {
@@ -116,10 +130,21 @@ export async function acquireReportUrl({ email, password, getOtp, storageState, 
     context.on('request', grab);
 
     await page.goto(REPORTS_URL, { waitUntil: 'domcontentloaded' });
-    console.log('[agendapro] url after goto:', page.url(), '| needsLogin:', needsLogin(page.url()));
-    if (needsLogin(page.url())) {
+    // SPA: it redirects to /sign_in client-side AFTER load, so settle before deciding.
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await sleep(2_500);
+    console.log('[agendapro] url after settle:', page.url(), '| loggedOut:', await isLoggedOut(page));
+
+    if (await isLoggedOut(page)) {
       await doLogin(page, { email, password, getOtp });
       await page.goto(REPORTS_URL, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await sleep(2_500);
+      console.log('[agendapro] url after login+goto:', page.url());
+      if (await isLoggedOut(page)) {
+        await dumpDebug(page, context, 'login-failed');
+        throw new Error('Login did not complete (still logged out after submit)');
+      }
     }
 
     // Give the app time to fire its authenticated API calls; reload once to force them.
