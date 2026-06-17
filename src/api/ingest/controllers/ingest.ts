@@ -123,8 +123,9 @@ export default {
       const result = await strapi.service('api::client.stampee').syncFromApi({ autocreate, dryRun });
       ctx.body = { ok: true, result };
     } catch (err: any) {
+      // Return 200 with the error in the body: a 5xx gets masked by the CDN's error
+      // page, hiding the actual message. This is a diagnostic route, not a fail-loud one.
       strapi.log.error(`[stampee] sync failed: ${err?.message}`);
-      ctx.status = 502;
       ctx.body = { ok: false, error: err?.message };
     }
   },
