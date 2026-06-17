@@ -25,6 +25,17 @@ async function recompute(): Promise<void> {
   await strapi.service('api::visit.winback').recomputeAll();
 }
 
+/** Best-effort Stampee sync — never throws, so a Stampee outage can't break ingest. */
+async function stampeeSyncSafe(): Promise<any> {
+  try {
+    const autocreate = process.env.STAMPEE_AUTOCREATE === 'true';
+    return await strapi.service('api::client.stampee').syncFromApi({ autocreate });
+  } catch (err: any) {
+    strapi.log.error(`[stampee] sync failed (non-fatal): ${err?.message}`);
+    return { error: err?.message };
+  }
+}
+
 export default {
   async agendaproReport(ctx: any) {
     if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
@@ -43,14 +54,15 @@ export default {
     }
 
     await recompute();
+    const stampee = await stampeeSyncSafe();
 
     // Fail loud: a non-empty report that produced no visits is almost certainly broken.
     if (summary.received > 0 && summary.visits_created + summary.visits_updated === 0) {
       ctx.status = 422;
-      ctx.body = { ok: false, reason: 'zero_visits_ingested', summary };
+      ctx.body = { ok: false, reason: 'zero_visits_ingested', summary, stampee };
       return;
     }
-    ctx.body = { ok: true, summary };
+    ctx.body = { ok: true, summary, stampee };
   },
 
   async agendapro(ctx: any) {
@@ -93,5 +105,21 @@ export default {
 
     const summary = await strapi.service('api::client.stampee').crosscheck(list);
     ctx.body = { ok: true, summary };
+  },
+
+  /**
+   * Live Stampee sync on demand. `?dryRun=1` lists who would get a card without writing
+   * (use this before enabling auto-create). Otherwise honours STAMPEE_AUTOCREATE, or
+   * force it with `?autocreate=1`.
+   */
+  async stampeeSync(ctx: any) {
+    if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
+    const q = ctx.query ?? {};
+    const dryRun = q.dryRun === '1' || q.dryRun === 'true';
+    const autocreate =
+      !dryRun &&
+      (process.env.STAMPEE_AUTOCREATE === 'true' || q.autocreate === '1' || q.autocreate === 'true');
+    const result = await strapi.service('api::client.stampee').syncFromApi({ autocreate, dryRun });
+    ctx.body = { ok: true, result };
   },
 };

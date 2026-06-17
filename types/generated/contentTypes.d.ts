@@ -477,6 +477,8 @@ export interface ApiClientClient extends Struct.CollectionTypeSchema {
     publishedAt: Schema.Attribute.DateTime;
     review_note: Schema.Attribute.Text;
     stampee_card: Schema.Attribute.Enumeration<['matched', 'sin_tarjeta']>;
+    stampee_card_unique_id: Schema.Attribute.String;
+    stampee_customer_id: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

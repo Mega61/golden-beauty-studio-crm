@@ -22,5 +22,11 @@ export default {
       handler: 'ingest.stampee',
       config: { auth: false },
     },
+    {
+      method: 'POST',
+      path: '/ingest/stampee-sync',
+      handler: 'ingest.stampeeSync',
+      config: { auth: false },
+    },
   ],
 };

@@ -57,7 +57,10 @@ upsert + recompute path as the manual script:
   parses + ingests + recomputes. **Primary** path (you end up with a file).
 - `POST /api/ingest/agendapro` — JSON `{ "bookings": [ {normalized}, ... ] }`.
 - `POST /api/ingest/stampee` — multipart `customers=@customers.json`; runs the
-  fidelization cross-check (the route version of `stampee-crosscheck.js`).
+  fidelization cross-check from an uploaded file (offline path).
+- `POST /api/ingest/stampee-sync` — **live** Stampee sync via the API key (no file).
+  Cross-checks `stampee_card`, and — once enabled — auto-issues cards to attended
+  clients. Also runs automatically after every report ingest.
 
 All require the header `x-ingest-secret: $INGEST_SHARED_SECRET`. The report route
 returns `{ ok, summary }`, or **422** when a non-empty report ingests zero visits
@@ -97,6 +100,25 @@ Two candidate implementations, both ending in the same xlsx → same route:
 Because Strapi owns parsing + normalization + upsert, the acquisition job stays a dumb
 "fetch file → POST file" client and the Playwright-vs-endpoint choice can change without
 touching Strapi.
+
+## Stampee fidelization sync (live)
+
+Set `STAMPEE_API_URL` + `STAMPEE_API_KEY` (Strapi env). The read-only cross-check then
+runs after every report ingest and updates each `Client.stampee_card`. Auto-issuing
+cards stays OFF (`STAMPEE_AUTOCREATE=false`) until you've reviewed a dry-run:
+
+```bash
+# Dry-run: list attended clients who WOULD get a card (no writes to Stampee).
+curl -H "x-ingest-secret: $S" "https://cms.goldenbeautystudio.com.co/api/ingest/stampee-sync?dryRun=1"
+
+# Once the dry-run looks right (no already-carded client in would_create — fix any
+# blank mobiles in Stampee first), enable it: set STAMPEE_AUTOCREATE=true and redeploy.
+# Or force a one-off write run:
+curl -H "x-ingest-secret: $S" "https://cms.goldenbeautystudio.com.co/api/ingest/stampee-sync?autocreate=1"
+```
+
+Phone is the sole dedup key; created customers get `mobile = phone`. Best-effort — a
+Stampee outage logs an error but never fails the report ingest.
 
 ## Read API
 

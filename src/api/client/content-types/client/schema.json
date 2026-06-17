@@ -63,6 +63,12 @@
       "type": "enumeration",
       "enum": ["matched", "sin_tarjeta"]
     },
+    "stampee_customer_id": {
+      "type": "string"
+    },
+    "stampee_card_unique_id": {
+      "type": "string"
+    },
     "visits": {
       "type": "relation",
       "relation": "oneToMany",
