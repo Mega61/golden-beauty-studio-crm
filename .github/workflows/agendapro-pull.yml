@@ -50,3 +50,14 @@ jobs:
           INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
           WINDOW_DAYS: ${{ vars.WINDOW_DAYS }}
           SESSION_FILE: .session/agendapro.json
+
+      # Diagnostics: on failure, the job writes a screenshot + url + cookie-name dump
+      # to debug/. Download it from the run's Artifacts to see what the headless run hit.
+      - name: Upload debug artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agendapro-debug
+          path: automation/agendapro-pull/debug/
+          if-no-files-found: ignore
+          retention-days: 7
