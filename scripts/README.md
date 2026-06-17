@@ -56,16 +56,31 @@ upsert + recompute path as the manual script:
 - `POST /api/ingest/agendapro-report` — multipart `report=@reservas.xlsx`. Strapi
   parses + ingests + recomputes. **Primary** path (you end up with a file).
 - `POST /api/ingest/agendapro` — JSON `{ "bookings": [ {normalized}, ... ] }`.
+- `POST /api/ingest/stampee` — multipart `customers=@customers.json`; runs the
+  fidelization cross-check (the route version of `stampee-crosscheck.js`).
 
-Both require the header `x-ingest-secret: $INGEST_SHARED_SECRET`. The report route
+All require the header `x-ingest-secret: $INGEST_SHARED_SECRET`. The report route
 returns `{ ok, summary }`, or **422** when a non-empty report ingests zero visits
-(fail-loud signal for the caller). Example:
+(fail-loud signal for the caller).
+
+These routes are also the easiest way to **seed prod by hand** — no need to put the
+export files in the repo or shell into the container; just curl the local file:
 
 ```bash
+# import reservations
 curl -H "x-ingest-secret: $INGEST_SHARED_SECRET" \
      -F "report=@reservas.xlsx" \
      https://cms.goldenbeautystudio.com.co/api/ingest/agendapro-report
+
+# fidelization cross-check
+curl -H "x-ingest-secret: $INGEST_SHARED_SECRET" \
+     -F "customers=@customers.json" \
+     https://cms.goldenbeautystudio.com.co/api/ingest/stampee
 ```
+
+The `scripts/*.js` versions remain for local/offline use; they take a file-path arg
+(`node scripts/import-export.js /path/to/reservas.xlsx`) — the `.claude/handoff/...`
+default is only a convenience and nothing under `.claude/` needs to be committed.
 
 **Acquisition (TODO — blocked on AgendaPro recon, plan §2.0/§2.1).** A small external
 job logs into AgendaPro, downloads the reservas export, and POSTs the file to the route

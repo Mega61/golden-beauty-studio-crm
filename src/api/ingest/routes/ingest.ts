@@ -16,5 +16,11 @@ export default {
       handler: 'ingest.agendapro',
       config: { auth: false },
     },
+    {
+      method: 'POST',
+      path: '/ingest/stampee',
+      handler: 'ingest.stampee',
+      config: { auth: false },
+    },
   ],
 };
