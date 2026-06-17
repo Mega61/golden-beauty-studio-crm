@@ -1,0 +1,52 @@
+name: AgendaPro daily pull
+
+on:
+  schedule:
+    - cron: '0 11 * * *' # 06:00 America/Bogota (UTC-5)
+  workflow_dispatch: {} # manual trigger for testing
+
+concurrency:
+  group: agendapro-pull
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: automation/agendapro-pull
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Persist the AgendaPro session (cookies) between runs so the browser/2FA
+      # only fires when the session has expired. Unique key per run + prefix restore
+      # = always save, always restore the most recent.
+      - name: Restore session
+        uses: actions/cache@v4
+        with:
+          path: automation/agendapro-pull/.session
+          key: agendapro-session-${{ github.run_id }}
+          restore-keys: agendapro-session-
+
+      - name: Pull report and upload to Strapi
+        run: node pull.mjs
+        env:
+          AGENDAPRO_EMAIL: ${{ secrets.AGENDAPRO_EMAIL }}
+          AGENDAPRO_PASSWORD: ${{ secrets.AGENDAPRO_PASSWORD }}
+          GOOGLE_SA_KEY: ${{ secrets.GOOGLE_SA_KEY }}
+          GMAIL_IMPERSONATE: ${{ secrets.GMAIL_IMPERSONATE }}
+          OTP_SENDER: ${{ vars.OTP_SENDER }}
+          INGEST_URL: ${{ vars.INGEST_URL }}
+          INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
+          WINDOW_DAYS: ${{ vars.WINDOW_DAYS }}
+          SESSION_FILE: .session/agendapro.json
