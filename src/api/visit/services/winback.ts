@@ -66,9 +66,29 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       bogotaToday(),
     );
 
+    // Soonest *future* booking still on the calendar (from the AgendaPro report).
+    // A client with one is "Agendada" — already coming back, so no reminder is due.
+    // Past-dated upcoming rows are excluded; they roll off here once their day passes.
+    const upcoming = (await strapi.documents(VISIT_UID).findMany({
+      filters: {
+        client: { documentId: clientDocumentId },
+        status: 'upcoming',
+        service_date: { $gte: bogotaToday() },
+      },
+      sort: ['service_date:asc'],
+      limit: 1,
+    })) as any[];
+    const next_appointment_date = upcoming[0]?.service_date ?? null;
+
     await strapi.documents(CLIENT_UID).update({
       documentId: clientDocumentId,
-      data: { last_visit_date, last_eligible_service, next_recommended_date, winback_status } as any,
+      data: {
+        last_visit_date,
+        last_eligible_service,
+        next_recommended_date,
+        winback_status,
+        next_appointment_date,
+      } as any,
     });
   },
 
@@ -143,6 +163,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       last_eligible_service: c.last_eligible_service,
       next_recommended_date: c.next_recommended_date,
       winback_status: c.winback_status,
+      next_appointment_date: c.next_appointment_date,
       time_remaining_days: timeRemainingDays(c.next_recommended_date, today),
       stampee_card: c.stampee_card,
       needs_review: c.needs_review,

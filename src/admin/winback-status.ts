@@ -21,6 +21,8 @@ export const STATUS_DISPLAY: Record<string, StatusDisplay> = {
   vencido: { label: 'Vencido', bg: '#fcecea', fg: '#b72b1a' },
   reciente: { label: 'Reciente', bg: '#eaf5ff', fg: '#2b5e9e' },
   sin_cadencia: { label: 'Sin cadencia', bg: '#eaeaef', fg: '#666687' },
+  // Not a stored winback_status — a derived state for clients with a future booking.
+  agendada: { label: 'Agendada', bg: '#efe7ff', fg: '#6b40c4' },
 };
 
 /** The three statuses the owner acts on, in priority order (for the dashboard KPIs). */

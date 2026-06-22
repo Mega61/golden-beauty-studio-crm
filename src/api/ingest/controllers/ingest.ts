@@ -29,7 +29,8 @@ async function recompute(): Promise<void> {
 async function stampeeSyncSafe(): Promise<any> {
   try {
     const autocreate = process.env.STAMPEE_AUTOCREATE === 'true';
-    return await strapi.service('api::client.stampee').syncFromApi({ autocreate });
+    const autostamp = process.env.STAMPEE_AUTOSTAMP === 'true';
+    return await strapi.service('api::client.stampee').syncFromApi({ autocreate, autostamp });
   } catch (err: any) {
     strapi.log.error(`[stampee] sync failed (non-fatal): ${err?.message}`);
     return { error: err?.message };
@@ -108,9 +109,9 @@ export default {
   },
 
   /**
-   * Live Stampee sync on demand. `?dryRun=1` lists who would get a card without writing
-   * (use this before enabling auto-create). Otherwise honours STAMPEE_AUTOCREATE, or
-   * force it with `?autocreate=1`.
+   * Live Stampee sync on demand. `?dryRun=1` lists who would get a card / a stamp without
+   * writing (use this before enabling auto-create / auto-stamp). Otherwise honours
+   * STAMPEE_AUTOCREATE / STAMPEE_AUTOSTAMP, or force them with `?autocreate=1` / `?autostamp=1`.
    */
   async stampeeSync(ctx: any) {
     if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
@@ -119,8 +120,13 @@ export default {
     const autocreate =
       !dryRun &&
       (process.env.STAMPEE_AUTOCREATE === 'true' || q.autocreate === '1' || q.autocreate === 'true');
+    const autostamp =
+      !dryRun &&
+      (process.env.STAMPEE_AUTOSTAMP === 'true' || q.autostamp === '1' || q.autostamp === 'true');
     try {
-      const result = await strapi.service('api::client.stampee').syncFromApi({ autocreate, dryRun });
+      const result = await strapi
+        .service('api::client.stampee')
+        .syncFromApi({ autocreate, autostamp, dryRun });
       ctx.body = { ok: true, result };
     } catch (err: any) {
       // Return 200 with the error in the body: a 5xx gets masked by the CDN's error

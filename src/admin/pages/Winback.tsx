@@ -17,6 +17,7 @@ import {
   SingleSelect,
   SingleSelectOption,
   IconButton,
+  Checkbox,
 } from '@strapi/design-system';
 import { CaretUp, CaretDown } from '@strapi/icons';
 import {
@@ -38,8 +39,27 @@ interface ClientRow {
   next_recommended_date?: string | null;
   winback_status?: WinbackStatus | null;
   stampee_card?: 'matched' | 'sin_tarjeta' | null;
+  /** Live stamp count + goal mirrored from Stampee during the cross-check. */
+  stampee_stamps?: number | null;
+  stampee_card_goal?: number | null;
   needs_review?: boolean;
+  /** Soonest future booking on the calendar, set from the AgendaPro report. Null = none scheduled. */
+  next_appointment_date?: string | null;
+  /**
+   * The retoque date this client's reminder was last marked as sent for.
+   * The checkmark is "on" only while this equals `next_recommended_date`, so it
+   * auto-clears when a new visit opens a fresh retoque window.
+   */
+  reminder_sent_for?: string | null;
 }
+
+/** True when the reminder has been marked sent for the client's *current* retoque cycle. */
+const isReminderSent = (row: ClientRow): boolean =>
+  !!row.reminder_sent_for && row.reminder_sent_for === row.next_recommended_date;
+
+/** True when the client has a future booking on the calendar (already coming back). */
+const hasAppointment = (row: ClientRow): boolean =>
+  !!row.next_appointment_date && (daysFromToday(row.next_appointment_date) ?? -1) >= 0;
 
 const ALL = 'all';
 
@@ -49,8 +69,10 @@ type SortKey =
   | 'last_visit_date'
   | 'last_eligible_service'
   | 'next_recommended_date'
+  | 'next_appointment_date'
   | 'winback_status'
-  | 'stampee_card';
+  | 'stampee_card'
+  | 'reminder_sent';
 
 interface SortState {
   key: SortKey;
@@ -77,6 +99,12 @@ function comparable(row: ClientRow, key: SortKey): number | string {
       return STATUS_RANK[row.winback_status ?? 'sin_cadencia'] ?? 99;
     case 'stampee_card':
       return FIDEL_RANK[row.stampee_card ?? 'sin_dato'] ?? 99;
+    case 'reminder_sent':
+      // Pending first on ascending sort — those are the ones still needing action.
+      return isReminderSent(row) ? 1 : 0;
+    case 'next_appointment_date':
+      // No booking sorts last on ascending order (soonest appointment first).
+      return row.next_appointment_date ?? '9999-12-31';
     case 'full_name':
     case 'last_eligible_service':
       return (row[key] ?? '').toString().toLowerCase();
@@ -93,11 +121,13 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'last_visit_date', label: 'Última visita' },
   { key: 'last_eligible_service', label: 'Servicio base' },
   { key: 'next_recommended_date', label: 'Próximo retoque' },
+  { key: 'next_appointment_date', label: 'Próxima cita' },
   { key: 'winback_status', label: 'Estado' },
   { key: 'stampee_card', label: 'Fidelización' },
+  { key: 'reminder_sent', label: 'Recordatorio' },
 ];
 
-const KPI = ({ label, count, status }: { label: string; count: number; status: WinbackStatus }) => {
+const KPI = ({ label, count, status }: { label: string; count: number; status: string }) => {
   const d = displayFor(status);
   return (
     <Box padding={4} hasRadius background="neutral0" shadow="tableShadow" style={{ borderLeft: `4px solid ${d.fg}` }}>
@@ -113,11 +143,22 @@ const KPI = ({ label, count, status }: { label: string; count: number; status: W
   );
 };
 
-const Fidelizacion = ({ value }: { value?: string | null }) => {
+const Fidelizacion = ({
+  value,
+  stamps,
+  goal,
+}: {
+  value?: string | null;
+  stamps?: number | null;
+  goal?: number | null;
+}) => {
   if (value === 'matched')
     return (
       <Typography variant="pi" textColor="success600">
         ✓ Tarjeta
+        {typeof stamps === 'number'
+          ? ` · ${stamps}${typeof goal === 'number' ? `/${goal}` : ''}`
+          : ''}
       </Typography>
     );
   if (value === 'sin_tarjeta')
@@ -127,6 +168,20 @@ const Fidelizacion = ({ value }: { value?: string | null }) => {
       </Typography>
     );
   return <Typography variant="pi" textColor="neutral500">—</Typography>;
+};
+
+/** Future-booking cell: a violet "Agendada" pill over the date, or a dash when none is scheduled. */
+const Appointment = ({ date }: { date?: string | null }) => {
+  if (!date || (daysFromToday(date) ?? -1) < 0)
+    return <Typography variant="pi" textColor="neutral500">—</Typography>;
+  return (
+    <Flex direction="column" alignItems="flex-start" gap={1}>
+      <StatusPill status="agendada" />
+      <Typography variant="pi" textColor="neutral600">
+        {date}
+      </Typography>
+    </Flex>
+  );
 };
 
 /**
@@ -159,8 +214,18 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
 );
 
 /** Phone layout: one card per client, header (name + status) over stacked fields. */
-const RetoqueCard = ({ row }: { row: ClientRow }) => {
+const RetoqueCard = ({
+  row,
+  saving,
+  onToggleReminder,
+}: {
+  row: ClientRow;
+  saving: boolean;
+  onToggleReminder: (row: ClientRow) => void;
+}) => {
   const remaining = daysFromToday(row.next_recommended_date);
+  const booked = hasAppointment(row);
+  const accent = booked ? displayFor('agendada').fg : displayFor(row.winback_status).fg;
   return (
     <Box
       hasRadius
@@ -168,16 +233,26 @@ const RetoqueCard = ({ row }: { row: ClientRow }) => {
       shadow="tableShadow"
       padding={4}
       marginBottom={3}
-      style={{ borderLeft: `4px solid ${displayFor(row.winback_status).fg}` }}
+      style={{ borderLeft: `4px solid ${accent}` }}
     >
       <Flex justifyContent="space-between" alignItems="flex-start" gap={2}>
         <Typography variant="delta" fontWeight="bold">
           {row.full_name || '—'}
         </Typography>
-        <StatusPill status={row.winback_status} />
+        <Flex direction="column" alignItems="flex-end" gap={1}>
+          {booked ? <StatusPill status="agendada" /> : null}
+          <StatusPill status={row.winback_status} />
+        </Flex>
       </Flex>
 
       <Box paddingTop={1} paddingBottom={2}>
+        {booked ? (
+          <Box paddingBottom={1}>
+            <Typography variant="pi" fontWeight="bold" style={{ color: displayFor('agendada').fg }}>
+              Cita agendada {row.next_appointment_date} · ya vuelve
+            </Typography>
+          </Box>
+        ) : null}
         <Typography variant="pi" textColor="neutral600">
           {statusPhrase(row.winback_status, remaining)}
         </Typography>
@@ -203,8 +278,27 @@ const RetoqueCard = ({ row }: { row: ClientRow }) => {
         <Field label="Próximo retoque">
           <Typography textColor="neutral700">{row.next_recommended_date}</Typography>
         </Field>
+        <Field label="Próxima cita">
+          {booked ? (
+            <Typography textColor="neutral700">{row.next_appointment_date}</Typography>
+          ) : (
+            <Typography textColor="neutral500">—</Typography>
+          )}
+        </Field>
         <Field label="Fidelización">
-          <Fidelizacion value={row.stampee_card} />
+          <Fidelizacion
+            value={row.stampee_card}
+            stamps={row.stampee_stamps}
+            goal={row.stampee_card_goal}
+          />
+        </Field>
+        <Field label="Recordatorio enviado">
+          <Checkbox
+            checked={isReminderSent(row)}
+            disabled={saving}
+            onCheckedChange={() => onToggleReminder(row)}
+            aria-label={`Marcar recordatorio enviado para ${row.full_name || 'cliente'}`}
+          />
         </Field>
       </Box>
     </Box>
@@ -212,10 +306,12 @@ const RetoqueCard = ({ row }: { row: ClientRow }) => {
 };
 
 const WinbackDashboard = () => {
-  const { get } = useFetchClient();
+  const { get, put } = useFetchClient();
   const [rows, setRows] = React.useState<ClientRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  // Rows whose checkbox is mid-flight; their checkbox is disabled until the PUT settles.
+  const [savingIds, setSavingIds] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
     let active = true;
@@ -244,9 +340,11 @@ const WinbackDashboard = () => {
 
   // Only clients with a live countdown.
   const due = React.useMemo(() => rows.filter((r) => r.next_recommended_date), [rows]);
+  const apptCount = React.useMemo(() => due.filter(hasAppointment).length, [due]);
 
   const [statusFilter, setStatusFilter] = React.useState<string>(ALL);
   const [fidelFilter, setFidelFilter] = React.useState<string>(ALL);
+  const [apptFilter, setApptFilter] = React.useState<string>(ALL);
   const [sort, setSort] = React.useState<SortState>(DEFAULT_SORT);
 
   const toggleSort = React.useCallback((key: SortKey) => {
@@ -255,11 +353,47 @@ const WinbackDashboard = () => {
     );
   }, []);
 
+  /**
+   * Toggle the "reminder sent" mark for a client's current retoque cycle.
+   * Marking stores today's `next_recommended_date` as the cycle key; un-marking clears it.
+   * Optimistic: the checkbox flips immediately and rolls back if the PUT fails.
+   */
+  const toggleReminder = React.useCallback(
+    async (row: ClientRow) => {
+      const next = isReminderSent(row) ? null : row.next_recommended_date ?? null;
+      const prev = row.reminder_sent_for ?? null;
+      setRows((rs) =>
+        rs.map((r) => (r.documentId === row.documentId ? { ...r, reminder_sent_for: next } : r)),
+      );
+      setSavingIds((s) => new Set(s).add(row.documentId));
+      try {
+        await put(`/content-manager/collection-types/api::client.client/${row.documentId}`, {
+          reminder_sent_for: next,
+        });
+      } catch (e: any) {
+        // Roll back to the pre-click value and surface the failure.
+        setRows((rs) =>
+          rs.map((r) => (r.documentId === row.documentId ? { ...r, reminder_sent_for: prev } : r)),
+        );
+        setError(e?.message ?? 'No se pudo guardar el recordatorio');
+      } finally {
+        setSavingIds((s) => {
+          const n = new Set(s);
+          n.delete(row.documentId);
+          return n;
+        });
+      }
+    },
+    [put],
+  );
+
   // Filter, then sort. Memoized so it only recomputes when inputs change.
   const visible = React.useMemo(() => {
     const filtered = due.filter((r) => {
       if (statusFilter !== ALL && (r.winback_status ?? 'sin_cadencia') !== statusFilter) return false;
       if (fidelFilter !== ALL && (r.stampee_card ?? 'sin_dato') !== fidelFilter) return false;
+      if (apptFilter === 'con' && !hasAppointment(r)) return false;
+      if (apptFilter === 'sin' && hasAppointment(r)) return false;
       return true;
     });
     const dir = sort.dir === 'asc' ? 1 : -1;
@@ -269,7 +403,7 @@ const WinbackDashboard = () => {
       const cmp = typeof va === 'number' ? va - (vb as number) : String(va).localeCompare(String(vb));
       return cmp * dir;
     });
-  }, [due, statusFilter, fidelFilter, sort]);
+  }, [due, statusFilter, fidelFilter, apptFilter, sort]);
 
   // Header cell that sorts its column on click and shows the active direction.
   const SortableTh = ({ column }: { column: { key: SortKey; label: string } }) => {
@@ -318,14 +452,17 @@ const WinbackDashboard = () => {
         </Box>
 
         <Grid.Root gap={4} paddingBottom={6}>
-          <Grid.Item col={4} s={12}>
+          <Grid.Item col={3} s={12}>
             <KPI label="En ventana (agendar)" count={counts.en_ventana ?? 0} status="en_ventana" />
           </Grid.Item>
-          <Grid.Item col={4} s={12}>
+          <Grid.Item col={3} s={12}>
             <KPI label="Por vencer" count={counts.por_vencer ?? 0} status="por_vencer" />
           </Grid.Item>
-          <Grid.Item col={4} s={12}>
+          <Grid.Item col={3} s={12}>
             <KPI label="Vencidos (cobrar montaje)" count={counts.vencido ?? 0} status="vencido" />
+          </Grid.Item>
+          <Grid.Item col={3} s={12}>
+            <KPI label="Agendadas (ya vuelven)" count={apptCount} status="agendada" />
           </Grid.Item>
         </Grid.Root>
 
@@ -345,11 +482,20 @@ const WinbackDashboard = () => {
                 onChange={(v) => setStatusFilter(String(v))}
               >
                 <SingleSelectOption value={ALL}>Todos</SingleSelectOption>
-                {Object.entries(STATUS_DISPLAY).map(([key, d]) => (
-                  <SingleSelectOption key={key} value={key}>
-                    {d.label}
-                  </SingleSelectOption>
-                ))}
+                {Object.entries(STATUS_DISPLAY)
+                  .filter(([key]) => key !== 'agendada')
+                  .map(([key, d]) => (
+                    <SingleSelectOption key={key} value={key}>
+                      {d.label}
+                    </SingleSelectOption>
+                  ))}
+              </SingleSelect>
+            </Box>
+            <Box minWidth="14rem">
+              <SingleSelect label="Cita" value={apptFilter} onChange={(v) => setApptFilter(String(v))}>
+                <SingleSelectOption value={ALL}>Todas</SingleSelectOption>
+                <SingleSelectOption value="con">Con cita agendada</SingleSelectOption>
+                <SingleSelectOption value="sin">Sin cita</SingleSelectOption>
               </SingleSelect>
             </Box>
             <Box minWidth="14rem">
@@ -392,7 +538,7 @@ const WinbackDashboard = () => {
 
           <DesktopOnly>
           <Box hasRadius background="neutral0" shadow="tableShadow">
-            <Table colCount={7} rowCount={visible.length}>
+            <Table colCount={9} rowCount={visible.length}>
               <Thead>
                 <Tr>
                   {COLUMNS.map((c) => (
@@ -428,6 +574,9 @@ const WinbackDashboard = () => {
                         <Typography textColor="neutral700">{r.next_recommended_date}</Typography>
                       </Td>
                       <Td>
+                        <Appointment date={r.next_appointment_date} />
+                      </Td>
+                      <Td>
                         <Flex direction="column" alignItems="flex-start" gap={1}>
                           <StatusPill status={r.winback_status} />
                           <Typography variant="pi" textColor="neutral600">
@@ -436,7 +585,19 @@ const WinbackDashboard = () => {
                         </Flex>
                       </Td>
                       <Td>
-                        <Fidelizacion value={r.stampee_card} />
+                        <Fidelizacion
+                          value={r.stampee_card}
+                          stamps={r.stampee_stamps}
+                          goal={r.stampee_card_goal}
+                        />
+                      </Td>
+                      <Td onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={isReminderSent(r)}
+                          disabled={savingIds.has(r.documentId)}
+                          onCheckedChange={() => toggleReminder(r)}
+                          aria-label={`Marcar recordatorio enviado para ${r.full_name || 'cliente'}`}
+                        />
                       </Td>
                     </Tr>
                   );
@@ -457,7 +618,14 @@ const WinbackDashboard = () => {
                 <Typography textColor="neutral600">{emptyText}</Typography>
               </Box>
             ) : (
-              visible.map((r) => <RetoqueCard key={r.documentId} row={r} />)
+              visible.map((r) => (
+                <RetoqueCard
+                  key={r.documentId}
+                  row={r}
+                  saving={savingIds.has(r.documentId)}
+                  onToggleReminder={toggleReminder}
+                />
+              ))
             )}
           </MobileOnly>
           </>

@@ -7,6 +7,10 @@ export interface StampeeCard {
   id: string;
   uniqueId: string;
   status?: string;
+  /** Current stamp count and the campaign goal/linkage — present on `?include=cards`. */
+  stamps?: number;
+  lastVisit?: string | null;
+  campaignId?: string | null;
 }
 export interface StampeeCustomerApi {
   id: string;
@@ -20,6 +24,8 @@ export interface StampeeCampaign {
   id: string;
   name: string;
   isEnabled?: boolean;
+  /** Stamps required to complete the card (the redemption goal). */
+  totalStamps?: number;
 }
 
 function cfg(): { base: string; key: string } | null {
@@ -93,6 +99,35 @@ export function issueCard(body: {
   campaignId: string;
 }): Promise<{ id: string; uniqueId: string }> {
   return call<{ id: string; uniqueId: string }>('/cards', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Set a card's authoritative stamp count (and last-visit date). PATCH /cards/:id. */
+export function patchCard(
+  cardId: string,
+  body: { stamps?: number; lastVisit?: string; status?: 'Active' | 'Redeemed'; completedDate?: string },
+): Promise<StampeeCard> {
+  return call<StampeeCard>(`/cards/${cardId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Append an audit entry to a card's history (does not itself change the stamp count). */
+export function addCardTransaction(
+  cardId: string,
+  body: {
+    type: 'stamp_add' | 'stamp_remove' | 'redeem' | 'issued';
+    amount: number;
+    date: string;
+    timestamp: number;
+    title: string;
+    remarks?: string;
+  },
+): Promise<any> {
+  return call<any>(`/cards/${cardId}/transactions`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

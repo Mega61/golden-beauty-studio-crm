@@ -55,6 +55,12 @@
     "next_recommended_date": {
       "type": "date"
     },
+    "next_appointment_date": {
+      "type": "date"
+    },
+    "reminder_sent_for": {
+      "type": "date"
+    },
     "winback_status": {
       "type": "enumeration",
       "enum": ["reciente", "en_ventana", "por_vencer", "vencido", "sin_cadencia"]
@@ -68,6 +74,16 @@
     },
     "stampee_card_unique_id": {
       "type": "string"
+    },
+    "stampee_stamped_count": {
+      "type": "integer",
+      "default": 0
+    },
+    "stampee_stamps": {
+      "type": "integer"
+    },
+    "stampee_card_goal": {
+      "type": "integer"
     },
     "visits": {
       "type": "relation",

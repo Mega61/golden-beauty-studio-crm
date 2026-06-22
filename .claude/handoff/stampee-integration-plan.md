@@ -112,8 +112,14 @@ after ingest+recompute, per-client errors are caught and logged, and it returns 
 2. **Dry-run auto-create.** `ensureCards()` with a `dryRun` flag → logs the would-create
    list for you to review. No writes to Stampee.
 3. **Enable auto-create.** Flip `STAMPEE_AUTOCREATE=true` after the dry-run looks right.
-4. **(Future) per-visit stamping** — add a stamp per completed visit (needs careful
-   idempotency: store last-stamped visit/booking id per card). Out of scope for v1.
+4. ✅ **Per-visit stamping (built).** `stampVisits()` adds one stamp per completed visit:
+   first ever = "Primera visita", the rest = "Visita recurrente". Idempotency is via
+   `Client.stampee_stamped_count` (how many visits already stamped) — only *new* visits
+   stamp, so daily re-imports never double-count. Stamps stop at the campaign goal (manual
+   redemption); the counter only advances by stamps actually applied, so after a redemption
+   the remaining visits land on the fresh card. OFF until `STAMPEE_AUTOSTAMP=true`; dry-run
+   via `POST /api/ingest/stampee-sync?dryRun=1` (reports a `stamping.would_stamp` list).
+   Decisions: every completed (Asiste) visit counts; never auto-redeem.
 
 ---
 
