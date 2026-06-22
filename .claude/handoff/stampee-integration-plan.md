@@ -112,14 +112,18 @@ after ingest+recompute, per-client errors are caught and logged, and it returns 
 2. **Dry-run auto-create.** `ensureCards()` with a `dryRun` flag → logs the would-create
    list for you to review. No writes to Stampee.
 3. **Enable auto-create.** Flip `STAMPEE_AUTOCREATE=true` after the dry-run looks right.
-4. ✅ **Per-visit stamping (built).** `stampVisits()` adds one stamp per completed visit:
-   first ever = "Primera visita", the rest = "Visita recurrente". Idempotency is via
-   `Client.stampee_stamped_count` (how many visits already stamped) — only *new* visits
-   stamp, so daily re-imports never double-count. Stamps stop at the campaign goal (manual
-   redemption); the counter only advances by stamps actually applied, so after a redemption
-   the remaining visits land on the fresh card. OFF until `STAMPEE_AUTOSTAMP=true`; dry-run
-   via `POST /api/ingest/stampee-sync?dryRun=1` (reports a `stamping.would_stamp` list).
-   Decisions: every completed (Asiste) visit counts; never auto-redeem.
+4. ✅ **Per-visit stamping (built).** `stampVisits()` reconciles each card so its stamp count
+   **equals** the client's completed-visit count, capped at the campaign goal — an ABSOLUTE
+   target, not an increment. This is idempotent (a correct card is left untouched) and
+   self-repairing (it fixes cards an earlier additive version inflated). Past redemptions are
+   respected: each redeemed card = `goal` visits cashed out (`baseline = goal × redeemedCount`),
+   so only the remainder lands on the current card. Stamp #1 ever = "Primera visita", the rest
+   "Visita recurrente"; a downward fix logs one "Corrección de sellos". OFF until
+   `STAMPEE_AUTOSTAMP=true`; dry-run via `POST /api/ingest/stampee-sync?dryRun=1` shows a
+   `stamping.would_stamp` list of `{from → to}` per client. Decisions: every completed (Asiste)
+   visit counts; cap at goal, never auto-redeem.
+   ⚠️ Reconcile trusts the CRM as the source of truth — a card's stamps are set to the client's
+   CRM visit count, so stamps added in Stampee that don't correspond to a CRM visit get removed.
 
 ---
 

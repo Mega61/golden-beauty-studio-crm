@@ -251,14 +251,13 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 
   /**
-   * Per-visit stamping (plan §5.4). Reconciles each carded client's Stampee card so it holds
-   * one stamp per completed visit. Idempotent across daily re-imports: `Client.stampee_stamped_count`
-   * records how many visits we've already pushed, so only *new* visits add stamps. The first ever
-   * stamp is logged as "Primera visita", the rest as "Visita recurrente".
-   *
-   * Stamps never exceed the campaign goal — when a card fills up we stop and leave it for manual
-   * redemption. `stampee_stamped_count` only advances by stamps actually applied, so once Mariana
-   * redeems and a fresh card appears, the remaining visits stamp onto it on the next run.
+   * Per-visit stamping (plan §5.4). Reconciles each carded client's Stampee card so its stamp
+   * count EQUALS their number of completed visits (capped at the campaign goal). The count is
+   * ABSOLUTE, not additive: re-running an import leaves an already-correct card untouched, and it
+   * repairs cards an earlier additive version double-counted. Past redemptions are respected — each
+   * redeemed card means `goal` visits were already cashed out, so only the remainder lands on the
+   * current card. Stamp #1 (ever) logs "Primera visita", the rest "Visita recurrente"; a downward
+   * repair logs one "Corrección de sellos". Redeemed cards are never stamped.
    * Best-effort: per-client errors are collected, never thrown.
    */
   async stampVisits(
@@ -271,8 +270,8 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       eligible: 0,
       stamped_clients: 0,
       stamps_added: 0,
-      already_current: 0,
-      capped_at_goal: 0,
+      stamps_corrected: 0,
+      unchanged: 0,
       skipped_no_active_card: 0,
       would_stamp: [] as Array<{ full_name: string; from: number; to: number; goal: number }>,
       errors: [] as Array<{ client: string; error: string }>,
@@ -309,35 +308,30 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         const l = last10(cl.phone);
         if (!l) continue;
 
-        const completed = await this.completedVisitCount(cl.documentId);
-        const prevStamped = Number(cl.stampee_stamped_count ?? 0);
-        const newStamps = completed - prevStamped;
-        if (newStamps <= 0) {
-          summary.already_current++;
-          continue;
-        }
-
-        // Stamp the active (non-redeemed) card with the most progress, to fill it first.
-        const active = (cardsByPhone.get(l) ?? [])
+        // The active (non-redeemed) card with the most progress is the one we reconcile.
+        const cards = cardsByPhone.get(l) ?? [];
+        const card = cards
           .filter((cd) => (cd.status ?? 'Active') !== 'Redeemed')
-          .sort((a, b) => (b.stamps ?? 0) - (a.stamps ?? 0));
-        const card = active[0];
+          .sort((a, b) => (b.stamps ?? 0) - (a.stamps ?? 0))[0];
         if (!card) {
           summary.skipped_no_active_card++;
           continue;
         }
 
-        const current = Number(card.stamps ?? 0);
+        const completed = await this.completedVisitCount(cl.documentId);
         const goal = goalFor(card.campaignId);
-        const capacity = goal - current;
-        const applied = Math.max(0, Math.min(newStamps, capacity));
-        if (applied <= 0) {
-          // Card already at goal — waiting on manual redemption. Don't advance the counter.
-          summary.capped_at_goal++;
+        const cap = Number.isFinite(goal) ? goal : Infinity;
+        // Each already-redeemed card represents `goal` visits cashed out — don't re-stamp those.
+        const redeemed = cards.filter((cd) => (cd.status ?? 'Active') === 'Redeemed').length;
+        const baseline = Number.isFinite(goal) ? goal * redeemed : 0;
+
+        const current = Number(card.stamps ?? 0);
+        // Absolute target: stamps == completed visits not yet redeemed, capped at the goal.
+        const target = Math.max(0, Math.min(completed - baseline, cap));
+        if (target === current) {
+          summary.unchanged++;
           continue;
         }
-        const target = current + applied;
-        if (applied < newStamps) summary.capped_at_goal++;
 
         if (dryRun) {
           summary.would_stamp.push({
@@ -349,33 +343,53 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
           continue;
         }
 
-        // Authoritative count first, then best-effort audit entries (one per new visit).
+        // Set the authoritative count, then best-effort audit entries.
         await patchCard(card.id, {
           stamps: target,
           ...(cl.last_visit_date ? { lastVisit: cl.last_visit_date } : {}),
         });
         const ts = Date.now();
-        for (let i = 0; i < applied; i++) {
-          const isFirstEver = prevStamped + i === 0;
+        const stampDate = cl.last_visit_date ?? new Date(ts).toISOString().slice(0, 10);
+        if (target > current) {
+          // One entry per newly-added stamp; the client's very first visit is "Primera visita".
+          for (let p = current + 1; p <= target; p++) {
+            const visitNo = baseline + p;
+            try {
+              await addCardTransaction(card.id, {
+                type: 'stamp_add',
+                amount: 1,
+                date: stampDate,
+                timestamp: ts,
+                title: visitNo === 1 ? 'Primera visita' : 'Visita recurrente',
+                remarks: 'Sincronizado desde AgendaPro (CRM)',
+              });
+            } catch (e: any) {
+              strapi.log.warn(`[stampee] transaction log failed for ${cl.full_name}: ${e?.message}`);
+            }
+          }
+          summary.stamps_added += target - current;
+        } else {
+          // Downward repair (e.g. undoing an earlier double-count).
           try {
             await addCardTransaction(card.id, {
-              type: 'stamp_add',
-              amount: 1,
-              date: cl.last_visit_date ?? new Date(ts).toISOString().slice(0, 10),
+              type: 'stamp_remove',
+              amount: current - target,
+              date: stampDate,
               timestamp: ts,
-              title: isFirstEver ? 'Primera visita' : 'Visita recurrente',
-              remarks: 'Sincronizado desde AgendaPro (CRM)',
+              title: 'Corrección de sellos',
+              remarks: 'Reconciliado con visitas reales (CRM)',
             });
           } catch (e: any) {
             strapi.log.warn(`[stampee] transaction log failed for ${cl.full_name}: ${e?.message}`);
           }
+          summary.stamps_corrected += current - target;
         }
+
         await strapi.documents(CLIENT_UID).update({
           documentId: cl.documentId,
-          data: { stampee_stamped_count: prevStamped + applied } as any,
+          data: { stampee_stamped_count: completed } as any,
         });
         summary.stamped_clients++;
-        summary.stamps_added += applied;
       } catch (err: any) {
         summary.errors.push({ client: cl.full_name || cl.phone, error: err?.message });
       }
