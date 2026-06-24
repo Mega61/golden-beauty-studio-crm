@@ -17,6 +17,14 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       TRANSFER_TOKEN_SALT: ${TRANSFER_TOKEN_SALT}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      # Public marketing CMS — media on GCS + watermark + CORS.
+      # See docs/GCP-CLOUDFLARE-SETUP.md. Define these in Portainer's stack env.
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
+      GCS_BASE_URL: ${GCS_BASE_URL}
+      GCS_SERVICE_ACCOUNT: ${GCS_SERVICE_ACCOUNT}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      MEDIA_CSP_ORIGINS: ${MEDIA_CSP_ORIGINS}
+      WATERMARK_FOLDER: ${WATERMARK_FOLDER}
     networks:
       - web
       - data

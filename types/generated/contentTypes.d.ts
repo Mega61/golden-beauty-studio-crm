@@ -469,16 +469,22 @@ export interface ApiClientClient extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     needs_review: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    next_appointment_date: Schema.Attribute.Date;
     next_recommended_date: Schema.Attribute.Date;
     opted_out: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     phone: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
     publishedAt: Schema.Attribute.DateTime;
+    reminder_sent_for: Schema.Attribute.Date;
     review_note: Schema.Attribute.Text;
     stampee_card: Schema.Attribute.Enumeration<['matched', 'sin_tarjeta']>;
+    stampee_card_goal: Schema.Attribute.Integer;
     stampee_card_unique_id: Schema.Attribute.String;
     stampee_customer_id: Schema.Attribute.String;
+    stampee_stamped_count: Schema.Attribute.Integer &
+      Schema.Attribute.DefaultTo<0>;
+    stampee_stamps: Schema.Attribute.Integer;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -489,6 +495,79 @@ export interface ApiClientClient extends Struct.CollectionTypeSchema {
     winback_status: Schema.Attribute.Enumeration<
       ['reciente', 'en_ventana', 'por_vencer', 'vencido', 'sin_cadencia']
     >;
+  };
+}
+
+export interface ApiLookbookCategoryLookbookCategory
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'lookbook_categories';
+  info: {
+    description: "A nail-technique category for the landing lookbook filter (Acr\u00EDlico, Polygel, \u2026). Labels are bilingual; the slug matches the landing's category key.";
+    displayName: 'Lookbook Category';
+    pluralName: 'lookbook-categories';
+    singularName: 'lookbook-category';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    items: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::lookbook-item.lookbook-item'
+    >;
+    label_en: Schema.Attribute.String & Schema.Attribute.Required;
+    label_es: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::lookbook-category.lookbook-category'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiLookbookItemLookbookItem
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'lookbook_items';
+  info: {
+    description: 'A single nail-look photo shown in the landing lookbook mosaic. Upload the photo and it is watermarked automatically.';
+    displayName: 'Lookbook Item';
+    pluralName: 'lookbook-items';
+    singularName: 'lookbook-item';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    caption: Schema.Attribute.String & Schema.Attribute.Required;
+    category: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::lookbook-category.lookbook-category'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::lookbook-item.lookbook-item'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    photo: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
   };
 }
 
@@ -1197,6 +1276,8 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::client.client': ApiClientClient;
+      'api::lookbook-category.lookbook-category': ApiLookbookCategoryLookbookCategory;
+      'api::lookbook-item.lookbook-item': ApiLookbookItemLookbookItem;
       'api::reminder.reminder': ApiReminderReminder;
       'api::service-cadence.service-cadence': ApiServiceCadenceServiceCadence;
       'api::visit.visit': ApiVisitVisit;
