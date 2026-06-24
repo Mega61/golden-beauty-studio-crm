@@ -20,6 +20,28 @@ const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Plugin =>
     enabled: true,
   },
 
+  // "Ver en la web" button in the content manager — deep-links each entry to the
+  // exact section on the live landing so the owner can eyeball her change in the
+  // real site (paired with on-demand revalidation so saves show in ~2s — see
+  // src/cms/revalidate.ts). LANDING_URL defaults to production; es is her primary
+  // locale. Section anchors match the landing component ids (trabajo / estudio /
+  // servicios); hero opens the top of the page.
+  'preview-button': {
+    config: {
+      contentTypes: (() => {
+        const landing = env('LANDING_URL', 'https://goldenbeautystudio.com.co');
+        return [
+          { uid: 'api::hero.hero', published: { url: `${landing}/es` } },
+          { uid: 'api::lookbook-item.lookbook-item', published: { url: `${landing}/es#trabajo` } },
+          { uid: 'api::lookbook-category.lookbook-category', published: { url: `${landing}/es#trabajo` } },
+          { uid: 'api::studio-photo.studio-photo', published: { url: `${landing}/es#estudio` } },
+          { uid: 'api::price-category.price-category', published: { url: `${landing}/es#servicios` } },
+          { uid: 'api::price-item.price-item', published: { url: `${landing}/es#servicios` } },
+        ];
+      })(),
+    },
+  },
+
   // Media library → Google Cloud Storage. When GCS_BUCKET_NAME is unset (e.g.
   // local dev), Strapi falls back to its default local-disk provider so the
   // app still boots. In prod, set the GCS_* vars (see docs/GCP-CLOUDFLARE-SETUP.md).

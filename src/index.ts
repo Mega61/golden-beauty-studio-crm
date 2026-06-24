@@ -4,6 +4,7 @@ import { registerWatermark } from './extensions/upload-watermark';
 import { bootstrapCms } from './cms/bootstrap';
 import { seedLookbook } from './cms/lookbook-seed';
 import { seedPricing } from './cms/price-seed';
+import { registerRevalidation } from './cms/revalidate';
 
 export default {
   /**
@@ -28,5 +29,6 @@ export default {
     await bootstrapCms(strapi);
     await seedLookbook(strapi);
     await seedPricing(strapi);
+    registerRevalidation(strapi);
   },
 };

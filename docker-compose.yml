@@ -26,6 +26,10 @@ services:
       MEDIA_CSP_ORIGINS: ${MEDIA_CSP_ORIGINS}
       WATERMARK_FOLDER: ${WATERMARK_FOLDER}
       WATERMARK_EXCLUDE_FOLDERS: ${WATERMARK_EXCLUDE_FOLDERS}
+      # Owner visual feedback: "Ver en la web" button + instant landing refresh.
+      LANDING_URL: ${LANDING_URL}
+      REVALIDATE_URL: ${REVALIDATE_URL}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET}
     networks:
       - web
       - data

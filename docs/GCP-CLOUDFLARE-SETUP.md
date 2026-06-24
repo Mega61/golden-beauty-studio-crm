@@ -234,6 +234,7 @@ Preview):
 |---|---|
 | `STRAPI_URL` | `https://cms.goldenbeautystudio.com.co` |
 | `NEXT_PUBLIC_MEDIA_HOST` | (Option B only) `media.goldenbeautystudio.com.co` |
+| `REVALIDATE_SECRET` | a long random string — **must match** the same var on Strapi (Part 10). Enables instant updates. |
 
 Redeploy. The lookbook section now reads from Strapi. **If `STRAPI_URL` is unset
 or Strapi is unreachable, the landing automatically falls back to the bundled
@@ -342,6 +343,84 @@ Daily use for the owner:
 
 ---
 
+## 10. Visual feedback for the owner
+
+So the owner can *see* her changes on the real site, two things are wired up:
+
+### a. "Ver en la web" button (in the content manager)
+
+The [Preview Button plugin](https://market.strapi.io/plugins/strapi-plugin-preview-button)
+adds a button on every entry's edit screen (and a column in the list view) that
+opens the **live landing page at the exact section** the entry belongs to:
+
+| Content type | Opens |
+|---|---|
+| Hero | top of the landing |
+| Lookbook Item / Category | `…/es#trabajo` |
+| Studio Photo | `…/es#estudio` |
+| Price Category / Item | `…/es#servicios` |
+
+It's already configured in `config/plugins.ts`. The base URL is `LANDING_URL`
+(defaults to production); it links to the Spanish site (`/es`). Nothing to set up
+beyond the plugin being installed — but the button is most useful with instant
+updates below, so she sees the change and not the previous version.
+
+### b. Instant updates (save → live in ~2s)
+
+The landing caches each page for 60s (ISR). Without this, a save could take up to
+a minute to appear — which feels broken. With **on-demand revalidation**, Strapi
+pings the landing the moment she saves, so the change shows in ~2 seconds.
+
+Setup (both sides share one secret):
+
+1. Generate a long random string (e.g. `openssl rand -hex 32`).
+2. **Strapi (Portainer):** set
+   - `REVALIDATE_URL=https://goldenbeautystudio.com.co/api/revalidate`
+   - `REVALIDATE_SECRET=<the random string>`
+3. **Landing (Vercel):** set `REVALIDATE_SECRET=<the same string>` and redeploy.
+
+Verify in the Strapi logs after a save: `[cms] revalidate -> 200`. (If the vars
+are unset it logs `revalidation disabled` and simply falls back to the 60s
+cadence — nothing breaks.)
+
+### c. One-time admin polish (makes the lists readable)
+
+By default Strapi labels rows generically (e.g. "Price Item"). Spend two minutes
+once to make them scannable — this is **per-collection** under **Content Manager →
+[collection] → Configure the view** (top-right), and persists in the database:
+
+| Collection | Set **Entry title** to | Suggested list columns |
+|---|---|---|
+| Price Item | `name_es` | name_es, priceCOP, durationMin, category |
+| Price Category | `label_es` | label_es, order |
+| Lookbook Item | `caption` | photo, caption, category, order |
+| Lookbook Category | `label_es` | label_es, order |
+| Studio Photo | `alt` (or photo) | photo, alt, order |
+
+(Media fields already render as thumbnails, so photos are visible at a glance.)
+This is a database setting, so do it once on the live admin — it survives reboots.
+
+### d. Phone editing (she works mostly from mobile)
+
+The admin is tuned for phone use and **verified at 390 px width** (login, list,
+and edit views all render single-column with full-width fields and a thumb-reach
+Save button):
+
+- **Set the admin to Spanish.** Spanish is enabled (`src/admin/app.tsx` →
+  `config.locales: ['es']`). She picks it once under **profile (top-right) →
+  Experience → Interface language → Español**; the whole panel + the "Ver en la
+  web" button then read in Spanish.
+- **Mobile CSS is built in.** `src/admin/app.tsx` injects `≤767px` tweaks
+  (16px inputs so iOS doesn't zoom on focus, 44px tap targets, tighter gutters,
+  and forcing two-column layouts to stack). Nothing to configure.
+- **Editing flow on her phone:** open the entry → change the value → **Save** →
+  tap **"Ver en la web"** (Open live view) to see it on the real site (instant if
+  Part 10b is set up).
+- The native top navigation already collapses to a compact bar on mobile (Strapi
+  5's own responsive behavior), so the menu, list, search and filters all work.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -353,6 +432,8 @@ Daily use for the owner:
 | Landing lookbook is empty / still old photos | `STRAPI_URL` not set on Vercel, or Public role missing `find`. The landing falls back to the bundled manifest when it can't reach Strapi. |
 | `next/image` 400 "hostname not configured" | Set `NEXT_PUBLIC_MEDIA_HOST` to the media domain and redeploy the landing (raw `storage.googleapis.com` is already allowed). |
 | Photos load but slowly | Option B + Cloudflare proxy ON gives edge caching; otherwise rely on the GCS `Cache-Control` (`GCS_CACHE_MAX_AGE`). |
+| Saved a change but the site still shows the old version | Instant updates not configured: set `REVALIDATE_URL` + `REVALIDATE_SECRET` on Strapi and the matching `REVALIDATE_SECRET` on Vercel (Part 10b). Without them it still updates, just on the 60s cycle. Check Strapi logs for `[cms] revalidate -> 200`. |
+| "Ver en la web" button missing / wrong URL | Confirm the plugin installed and `LANDING_URL` is set. The button links to `/es` sections; the anchors are `#trabajo` / `#estudio` / `#servicios`. |
 
 ---
 
