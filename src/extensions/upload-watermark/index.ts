@@ -13,10 +13,15 @@
  * watermark onto the optimized buffer, and hand back a file object of the same
  * shape. Thumbnails generated afterwards inherit the mark for free.
  *
- * Scope: by default every uploaded image is watermarked. Set WATERMARK_FOLDER
- * (a Media Library folder name, e.g. "Lookbook") to restrict marking to images
- * uploaded into that folder — useful once promo banners / bio avatars (which
- * should NOT carry the nail wordmark) start being uploaded.
+ * Scope: by default every uploaded image is watermarked. Two opt-out knobs:
+ *   - WATERMARK_EXCLUDE_FOLDERS — comma-separated Media Library folder names
+ *     (e.g. "Hero,Estudio") whose images stay UNMARKED. Best for rarely-changed
+ *     non-lookbook media (hero background, studio photos) while the frequent
+ *     lookbook uploads keep watermarking with zero folder fuss.
+ *   - WATERMARK_FOLDER — a single folder name to restrict marking to ONLY that
+ *     folder (inverse logic). When set, it wins over the exclude list.
+ * Either way, promo banners / bio avatars / hero / studio shots can avoid the
+ * nail wordmark.
  *
  * Safety: any failure logs and falls through to the un-watermarked file, so a
  * watermarking bug can never block an upload.
@@ -161,22 +166,44 @@ async function watermarkFile(
   });
 }
 
+async function resolveFolderName(
+  file: UploadFile,
+  strapi: Core.Strapi,
+): Promise<string | null> {
+  const folderId =
+    typeof file.folder === 'object' ? file.folder?.id : file.folder;
+  if (!folderId) return null;
+  const folder = await strapi.db
+    .query('plugin::upload.folder')
+    .findOne({ where: { id: folderId } });
+  return folder?.name ?? null;
+}
+
+function parseList(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 async function shouldWatermark(
   file: UploadFile,
   strapi: Core.Strapi,
 ): Promise<boolean> {
   if (process.env.WATERMARK_ENABLED === 'false') return false;
 
-  const scope = process.env.WATERMARK_FOLDER?.trim();
-  if (!scope) return true; // default: watermark every image
+  // Inverse mode: only the named folder gets watermarked.
+  const includeOnly = process.env.WATERMARK_FOLDER?.trim();
+  if (includeOnly) {
+    const name = await resolveFolderName(file, strapi);
+    return name === includeOnly;
+  }
 
-  const folderId =
-    typeof file.folder === 'object' ? file.folder?.id : file.folder;
-  if (!folderId) return false;
-  const folder = await strapi.db
-    .query('plugin::upload.folder')
-    .findOne({ where: { id: folderId } });
-  return Boolean(folder && folder.name === scope);
+  // Default mode: watermark everything except the excluded folders.
+  const excluded = parseList(process.env.WATERMARK_EXCLUDE_FOLDERS);
+  if (excluded.length === 0) return true;
+  const name = await resolveFolderName(file, strapi);
+  return !(name && excluded.includes(name));
 }
 
 let patched = false;
@@ -221,8 +248,12 @@ export function registerWatermark(strapi: Core.Strapi): void {
   im.__watermarkPatched = true;
   patched = true;
 
-  const scope = process.env.WATERMARK_FOLDER?.trim();
-  strapi.log.info(
-    `[upload-watermark] active (scope: ${scope ? `folder "${scope}"` : 'all images'})`,
-  );
+  const includeOnly = process.env.WATERMARK_FOLDER?.trim();
+  const excluded = parseList(process.env.WATERMARK_EXCLUDE_FOLDERS);
+  const scopeDesc = includeOnly
+    ? `only folder "${includeOnly}"`
+    : excluded.length
+      ? `all images except folders [${excluded.join(', ')}]`
+      : 'all images';
+  strapi.log.info(`[upload-watermark] active (scope: ${scopeDesc})`);
 }

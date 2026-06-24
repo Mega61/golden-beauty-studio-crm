@@ -12,6 +12,8 @@ import type { Core } from '@strapi/strapi';
 export const PUBLIC_READ_UIDS: string[] = [
   'api::lookbook-category.lookbook-category',
   'api::lookbook-item.lookbook-item',
+  'api::hero.hero',
+  'api::studio-photo.studio-photo',
   // Phase 2+: 'api::promo-scenario.promo-scenario',
   // Phase 3+: 'api::price-category.price-category',
   // Phase 4+: 'api::link-bio.link-bio',

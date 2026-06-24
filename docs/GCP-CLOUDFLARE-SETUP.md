@@ -191,7 +191,8 @@ add:
 | `GCS_SERVICE_ACCOUNT` | (2A only) the one-line JSON key |
 | `CORS_ORIGINS` | `https://goldenbeautystudio.com.co,https://www.goldenbeautystudio.com.co` |
 | `MEDIA_CSP_ORIGINS` | your media host(s), e.g. `https://media.goldenbeautystudio.com.co,https://storage.googleapis.com` |
-| `WATERMARK_FOLDER` | leave **unset** for now (watermark all images) |
+| `WATERMARK_EXCLUDE_FOLDERS` | `Hero,Estudio` — keeps the hero + studio photos unmarked (lookbook still watermarked). See Part 8. |
+| `WATERMARK_FOLDER` | leave **unset** (inverse mode; only needed to watermark ONE folder) |
 
 Pull the new image / redeploy the stack. On boot, the logs should show:
 
@@ -278,12 +279,44 @@ number (lower = earlier).
 
 ---
 
+## 8. Hero image & studio photos (no watermark)
+
+The landing's **hero background** and the **"05 — El estudio" gallery** are also
+CMS-driven now. Unlike the lookbook, these should **not** carry the gold
+wordmark — so they live in their own Media Library folders that the watermarker
+skips (via `WATERMARK_EXCLUDE_FOLDERS=Hero,Estudio` from Part 3).
+
+One-time setup in the admin:
+
+1. **Media Library → Add new folder** → create `Hero` and `Estudio` (exact
+   names, matching `WATERMARK_EXCLUDE_FOLDERS`). Upload into these folders so the
+   images stay unmarked. (Anything uploaded outside them gets watermarked, which
+   is what you want for lookbook photos.)
+2. **Content Manager → Hero (landing) → edit** → set the **image** (pick the one
+   you put in the `Hero` folder, or upload — but if you upload inline it lands in
+   the root and *will* be watermarked, so prefer choosing from the `Hero`
+   folder). Save.
+3. **Content Manager → Studio Photo → Create new entry** → choose a photo from
+   the `Estudio` folder, optionally type `alt` text, set `order` (lower = first;
+   the first one renders large). Repeat for each studio photo. Save.
+
+The landing reads these within ~1 minute. **If the Hero single type has no
+image, or there are zero Studio Photos, the landing falls back to the bundled
+`/hero.jpg` and `/space-0x.jpg`** — so the page never breaks. Studio `alt` text
+falls back to the site translations by position when left blank.
+
+> Tip: to swap the hero later, the owner just edits the Hero entry's image. To
+> reorder the studio gallery, change the `order` numbers.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | Strapi won't boot, "Check if bucket exist" | Wrong `GCS_BUCKET_NAME`, or the SA/VM lacks access to it. |
 | Photos upload but aren't watermarked | Check boot log for `[upload-watermark] active`. If `WATERMARK_FOLDER` is set, the photo must be in that Media Library folder. SVG missing → log warns and serves unmarked. |
+| Hero/studio photos came out watermarked | They were uploaded outside the `Hero`/`Estudio` folders (or those names don't match `WATERMARK_EXCLUDE_FOLDERS`). Re-upload into the right folder and re-select. |
 | Admin shows broken media thumbnails | Add your media host to `MEDIA_CSP_ORIGINS` and redeploy. |
 | Landing lookbook is empty / still old photos | `STRAPI_URL` not set on Vercel, or Public role missing `find`. The landing falls back to the bundled manifest when it can't reach Strapi. |
 | `next/image` 400 "hostname not configured" | Set `NEXT_PUBLIC_MEDIA_HOST` to the media domain and redeploy the landing (raw `storage.googleapis.com` is already allowed). |

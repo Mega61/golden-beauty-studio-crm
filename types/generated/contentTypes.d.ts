@@ -498,6 +498,32 @@ export interface ApiClientClient extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiHeroHero extends Struct.SingleTypeSchema {
+  collectionName: 'hero';
+  info: {
+    description: 'The big background photo at the top of the landing page. Replace the image to change the hero; all hero text stays in the site translations.';
+    displayName: 'Hero (landing)';
+    pluralName: 'heroes';
+    singularName: 'hero';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    image: Schema.Attribute.Media<'images'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::hero.hero'> &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiLookbookCategoryLookbookCategory
   extends Struct.CollectionTypeSchema {
   collectionName: 'lookbook_categories';
@@ -635,6 +661,37 @@ export interface ApiServiceCadenceServiceCadence
     > &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiStudioPhotoStudioPhoto extends Struct.CollectionTypeSchema {
+  collectionName: 'studio_photos';
+  info: {
+    description: "A photo of the studio space, shown in the '05 \u2014 El estudio' section. Add, remove or reorder these to change that gallery.";
+    displayName: 'Studio Photo';
+    pluralName: 'studio-photos';
+    singularName: 'studio-photo';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    alt: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::studio-photo.studio-photo'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    photo: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1276,10 +1333,12 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::client.client': ApiClientClient;
+      'api::hero.hero': ApiHeroHero;
       'api::lookbook-category.lookbook-category': ApiLookbookCategoryLookbookCategory;
       'api::lookbook-item.lookbook-item': ApiLookbookItemLookbookItem;
       'api::reminder.reminder': ApiReminderReminder;
       'api::service-cadence.service-cadence': ApiServiceCadenceServiceCadence;
+      'api::studio-photo.studio-photo': ApiStudioPhotoStudioPhoto;
       'api::visit.visit': ApiVisitVisit;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;

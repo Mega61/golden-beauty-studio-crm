@@ -33,8 +33,12 @@ const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Plugin =>
               bucketName: env('GCS_BUCKET_NAME'),
               // Omit serviceAccount to use the VM's Application Default
               // Credentials; set GCS_SERVICE_ACCOUNT (a JSON key) to use a
-              // dedicated service-account key instead.
-              serviceAccount: env.json('GCS_SERVICE_ACCOUNT', undefined),
+              // dedicated service-account key instead. Guard the parse so an
+              // empty/unset var falls back to ADC instead of crashing boot on
+              // JSON.parse("").
+              serviceAccount: env('GCS_SERVICE_ACCOUNT')
+                ? env.json('GCS_SERVICE_ACCOUNT', undefined)
+                : undefined,
               // Public delivery URL. Point at the Cloudflare-fronted subdomain
               // (e.g. https://media.goldenbeautystudio.com.co) for CDN caching.
               // Falls back to the raw GCS URL when unset.
