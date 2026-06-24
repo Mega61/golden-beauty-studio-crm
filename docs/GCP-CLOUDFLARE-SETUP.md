@@ -310,6 +310,38 @@ falls back to the site translations by position when left blank.
 
 ---
 
+## 9. Price list (Servicios)
+
+The landing's **"Servicios" price menu** is fully CMS-driven — names, descriptions,
+prices, durations and ordering, all owner-editable, in both languages. No media,
+so nothing to do on GCS/Cloudflare; it just needs Strapi reachable (Part 5's
+`STRAPI_URL`). On first boot the entire current menu is **seeded automatically**
+(6 categories, 30 services) — the boot log shows `[cms] seeded pricing: 6
+categories, 30 items`. The seed is idempotent and keyed by slug, so any edit the
+owner makes survives every reboot.
+
+Two content types:
+- **Price Category** — `label_es`/`label_en`, `sub_es`/`sub_en`, `order`.
+- **Price Item** — `name_es`/`name_en`, `desc_es`/`desc_en`, `priceCOP` (number
+  in pesos, no symbol), `durationMin` (minutes; leave blank for "—"), `fromPrice`
+  (shows the "desde/from" prefix), `order`, and its parent **Category**.
+
+Daily use for the owner:
+1. **Content Manager → Price Item** → edit a service to change its price/name, or
+   **Create new entry** to add one (fill both languages, set `priceCOP`, pick the
+   Category, set `order`). To remove a service, delete its entry.
+2. **Content Manager → Price Category** → rename a group or change its `order`.
+3. Changes show on the site within ~1 minute.
+
+> Prices are entered as plain numbers (e.g. `120000`); the landing formats them
+> per-language (`$120.000` in es, `$120,000 COP` in en). **If Strapi is
+> unreachable, the landing falls back to the prices bundled in its own repo**, so
+> the menu never disappears. (The SEO/structured-data starting-price uses that
+> same bundled baseline, so it can lag a CMS price change until the next deploy —
+> harmless.)
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -332,7 +364,7 @@ by the later phases in the migration plan:
 - **Phase 2 — Promotions** (`promo-scenario`): the landing already has a
   ready-to-paste Strapi resolver in `src/data/promos.ts`. Add the content type +
   `PUBLIC_READ_UIDS` entry in `src/cms/bootstrap.ts`.
-- **Phase 3 — Pricing** (`price-category` / `price-item`): localized, full
-  owner control of names + numbers.
+- ✅ **Phase 3 — Pricing** (`price-category` / `price-item`): done — full owner
+  control of bilingual names + numbers (see Part 9).
 - **Phase 4 — Bio** (`link-bio` single type): resolver ready in
   `src/data/bio.ts`.

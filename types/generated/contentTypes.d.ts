@@ -597,6 +597,96 @@ export interface ApiLookbookItemLookbookItem
   };
 }
 
+export interface ApiPriceCategoryPriceCategory
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'price_categories';
+  info: {
+    description: "A group of services in the landing price list (Montajes, Retoques, \u2026). Labels are bilingual (es/en). Lower 'order' shows first.";
+    displayName: 'Price Category';
+    pluralName: 'price-categories';
+    singularName: 'price-category';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    items: Schema.Attribute.Relation<'oneToMany', 'api::price-item.price-item'>;
+    label_en: Schema.Attribute.String & Schema.Attribute.Required;
+    label_es: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::price-category.price-category'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID & Schema.Attribute.Required;
+    sub_en: Schema.Attribute.String;
+    sub_es: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiPriceItemPriceItem extends Struct.CollectionTypeSchema {
+  collectionName: 'price_items';
+  info: {
+    description: 'A single service line in the landing price list. Name + description are bilingual (es/en); priceCOP is the number in Colombian pesos; durationMin is minutes (leave blank for none).';
+    displayName: 'Price Item';
+    pluralName: 'price-items';
+    singularName: 'price-item';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    category: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::price-category.price-category'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    desc_en: Schema.Attribute.String;
+    desc_es: Schema.Attribute.String;
+    durationMin: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    fromPrice: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::price-item.price-item'
+    > &
+      Schema.Attribute.Private;
+    name_en: Schema.Attribute.String & Schema.Attribute.Required;
+    name_es: Schema.Attribute.String & Schema.Attribute.Required;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    priceCOP: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiReminderReminder extends Struct.CollectionTypeSchema {
   collectionName: 'reminders';
   info: {
@@ -1336,6 +1426,8 @@ declare module '@strapi/strapi' {
       'api::hero.hero': ApiHeroHero;
       'api::lookbook-category.lookbook-category': ApiLookbookCategoryLookbookCategory;
       'api::lookbook-item.lookbook-item': ApiLookbookItemLookbookItem;
+      'api::price-category.price-category': ApiPriceCategoryPriceCategory;
+      'api::price-item.price-item': ApiPriceItemPriceItem;
       'api::reminder.reminder': ApiReminderReminder;
       'api::service-cadence.service-cadence': ApiServiceCadenceServiceCadence;
       'api::studio-photo.studio-photo': ApiStudioPhotoStudioPhoto;

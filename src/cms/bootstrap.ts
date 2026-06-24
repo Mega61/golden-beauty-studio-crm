@@ -14,8 +14,9 @@ export const PUBLIC_READ_UIDS: string[] = [
   'api::lookbook-item.lookbook-item',
   'api::hero.hero',
   'api::studio-photo.studio-photo',
+  'api::price-category.price-category',
+  'api::price-item.price-item',
   // Phase 2+: 'api::promo-scenario.promo-scenario',
-  // Phase 3+: 'api::price-category.price-category',
   // Phase 4+: 'api::link-bio.link-bio',
 ];
 

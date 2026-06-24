@@ -3,6 +3,7 @@ import { seedServiceCadences } from './winback/cadence-seed';
 import { registerWatermark } from './extensions/upload-watermark';
 import { bootstrapCms } from './cms/bootstrap';
 import { seedLookbook } from './cms/lookbook-seed';
+import { seedPricing } from './cms/price-seed';
 
 export default {
   /**
@@ -26,5 +27,6 @@ export default {
     registerWatermark(strapi);
     await bootstrapCms(strapi);
     await seedLookbook(strapi);
+    await seedPricing(strapi);
   },
 };
