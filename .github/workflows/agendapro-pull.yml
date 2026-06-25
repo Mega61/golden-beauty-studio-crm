@@ -2,7 +2,12 @@ name: AgendaPro daily pull
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 19:00 America/Bogota (UTC-5)
+    # 23:50 UTC = 18:50 America/Bogota. Deliberately OFF the 00:00-UTC top-of-hour
+    # slot: that slot is GitHub's most congested and was slipping our run ~4h late
+    # (to ~11pm Bogota). An off-:00 minute fires near on-time; the :50 target leaves
+    # headroom so a small delay still lands it around 7pm. GitHub gives no exact-time
+    # guarantee for scheduled runs — if 7pm must be precise, trigger via the server.
+    - cron: '50 23 * * *'
   workflow_dispatch: {} # manual trigger for testing
 
 concurrency:
