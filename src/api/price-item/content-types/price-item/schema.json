@@ -1,0 +1,57 @@
+{
+  "kind": "collectionType",
+  "collectionName": "price_items",
+  "info": {
+    "singularName": "price-item",
+    "pluralName": "price-items",
+    "displayName": "Price Item",
+    "description": "A single service line in the landing price list. Name + description are bilingual (es/en); priceCOP is the number in Colombian pesos; durationMin is minutes (leave blank for none)."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "slug": {
+      "type": "uid",
+      "required": true
+    },
+    "name_es": {
+      "type": "string",
+      "required": true
+    },
+    "name_en": {
+      "type": "string",
+      "required": true
+    },
+    "desc_es": {
+      "type": "string"
+    },
+    "desc_en": {
+      "type": "string"
+    },
+    "priceCOP": {
+      "type": "integer",
+      "required": true,
+      "min": 0
+    },
+    "durationMin": {
+      "type": "integer",
+      "min": 0
+    },
+    "fromPrice": {
+      "type": "boolean",
+      "default": false
+    },
+    "order": {
+      "type": "integer",
+      "default": 0
+    },
+    "category": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::price-category.price-category",
+      "inversedBy": "items"
+    }
+  }
+}

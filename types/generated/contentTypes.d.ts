@@ -469,16 +469,22 @@ export interface ApiClientClient extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     needs_review: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    next_appointment_date: Schema.Attribute.Date;
     next_recommended_date: Schema.Attribute.Date;
     opted_out: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     phone: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
     publishedAt: Schema.Attribute.DateTime;
+    reminder_sent_for: Schema.Attribute.Date;
     review_note: Schema.Attribute.Text;
     stampee_card: Schema.Attribute.Enumeration<['matched', 'sin_tarjeta']>;
+    stampee_card_goal: Schema.Attribute.Integer;
     stampee_card_unique_id: Schema.Attribute.String;
     stampee_customer_id: Schema.Attribute.String;
+    stampee_stamped_count: Schema.Attribute.Integer &
+      Schema.Attribute.DefaultTo<0>;
+    stampee_stamps: Schema.Attribute.Integer;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -489,6 +495,195 @@ export interface ApiClientClient extends Struct.CollectionTypeSchema {
     winback_status: Schema.Attribute.Enumeration<
       ['reciente', 'en_ventana', 'por_vencer', 'vencido', 'sin_cadencia']
     >;
+  };
+}
+
+export interface ApiHeroHero extends Struct.SingleTypeSchema {
+  collectionName: 'hero';
+  info: {
+    description: 'The big background photo at the top of the landing page. Replace the image to change the hero; all hero text stays in the site translations.';
+    displayName: 'Hero (landing)';
+    pluralName: 'heroes';
+    singularName: 'hero';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    image: Schema.Attribute.Media<'images'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::hero.hero'> &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiLookbookCategoryLookbookCategory
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'lookbook_categories';
+  info: {
+    description: "A nail-technique category for the landing lookbook filter (Acr\u00EDlico, Polygel, \u2026). Labels are bilingual; the slug matches the landing's category key.";
+    displayName: 'Lookbook Category';
+    pluralName: 'lookbook-categories';
+    singularName: 'lookbook-category';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    items: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::lookbook-item.lookbook-item'
+    >;
+    label_en: Schema.Attribute.String & Schema.Attribute.Required;
+    label_es: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::lookbook-category.lookbook-category'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiLookbookItemLookbookItem
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'lookbook_items';
+  info: {
+    description: 'A single nail-look photo shown in the landing lookbook mosaic. Upload the photo and it is watermarked automatically.';
+    displayName: 'Lookbook Item';
+    pluralName: 'lookbook-items';
+    singularName: 'lookbook-item';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    caption: Schema.Attribute.String & Schema.Attribute.Required;
+    category: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::lookbook-category.lookbook-category'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::lookbook-item.lookbook-item'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    photo: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiPriceCategoryPriceCategory
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'price_categories';
+  info: {
+    description: "A group of services in the landing price list (Montajes, Retoques, \u2026). Labels are bilingual (es/en). Lower 'order' shows first.";
+    displayName: 'Price Category';
+    pluralName: 'price-categories';
+    singularName: 'price-category';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    items: Schema.Attribute.Relation<'oneToMany', 'api::price-item.price-item'>;
+    label_en: Schema.Attribute.String & Schema.Attribute.Required;
+    label_es: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::price-category.price-category'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID & Schema.Attribute.Required;
+    sub_en: Schema.Attribute.String;
+    sub_es: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiPriceItemPriceItem extends Struct.CollectionTypeSchema {
+  collectionName: 'price_items';
+  info: {
+    description: 'A single service line in the landing price list. Name + description are bilingual (es/en); priceCOP is the number in Colombian pesos; durationMin is minutes (leave blank for none).';
+    displayName: 'Price Item';
+    pluralName: 'price-items';
+    singularName: 'price-item';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    category: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::price-category.price-category'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    desc_en: Schema.Attribute.String;
+    desc_es: Schema.Attribute.String;
+    durationMin: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    fromPrice: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::price-item.price-item'
+    > &
+      Schema.Attribute.Private;
+    name_en: Schema.Attribute.String & Schema.Attribute.Required;
+    name_es: Schema.Attribute.String & Schema.Attribute.Required;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    priceCOP: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
   };
 }
 
@@ -556,6 +751,37 @@ export interface ApiServiceCadenceServiceCadence
     > &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiStudioPhotoStudioPhoto extends Struct.CollectionTypeSchema {
+  collectionName: 'studio_photos';
+  info: {
+    description: "A photo of the studio space, shown in the '05 \u2014 El estudio' section. Add, remove or reorder these to change that gallery.";
+    displayName: 'Studio Photo';
+    pluralName: 'studio-photos';
+    singularName: 'studio-photo';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    alt: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::studio-photo.studio-photo'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    photo: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1197,8 +1423,14 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::client.client': ApiClientClient;
+      'api::hero.hero': ApiHeroHero;
+      'api::lookbook-category.lookbook-category': ApiLookbookCategoryLookbookCategory;
+      'api::lookbook-item.lookbook-item': ApiLookbookItemLookbookItem;
+      'api::price-category.price-category': ApiPriceCategoryPriceCategory;
+      'api::price-item.price-item': ApiPriceItemPriceItem;
       'api::reminder.reminder': ApiReminderReminder;
       'api::service-cadence.service-cadence': ApiServiceCadenceServiceCadence;
+      'api::studio-photo.studio-photo': ApiStudioPhotoStudioPhoto;
       'api::visit.visit': ApiVisitVisit;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;

@@ -1,0 +1,38 @@
+{
+  "kind": "collectionType",
+  "collectionName": "lookbook_categories",
+  "info": {
+    "singularName": "lookbook-category",
+    "pluralName": "lookbook-categories",
+    "displayName": "Lookbook Category",
+    "description": "A nail-technique category for the landing lookbook filter (Acrílico, Polygel, …). Labels are bilingual; the slug matches the landing's category key."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "slug": {
+      "type": "uid",
+      "required": true
+    },
+    "label_es": {
+      "type": "string",
+      "required": true
+    },
+    "label_en": {
+      "type": "string",
+      "required": true
+    },
+    "order": {
+      "type": "integer",
+      "default": 0
+    },
+    "items": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::lookbook-item.lookbook-item",
+      "mappedBy": "category"
+    }
+  }
+}

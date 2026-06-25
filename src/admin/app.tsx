@@ -4,6 +4,46 @@ import WinbackBadge from './components/WinbackBadge';
 
 const SSO_URL = '/strapi-plugin-sso/google';
 const BUTTON_ID = 'gbs-sso-google-button';
+const MOBILE_STYLE_ID = 'gbs-mobile-admin-css';
+
+// The owner edits mostly from her phone. Strapi 5's admin is progressively going
+// responsive (nav/subnav already are), but the content-manager forms can still
+// be fiddly on a small screen. These additive tweaks (scoped to ≤767px, so
+// desktop is untouched) target the universal touch pain points without relying
+// on Strapi's hashed styled-component class names: 16px inputs to stop iOS
+// zoom-on-focus, comfortable tap targets, tighter gutters, and forcing the
+// two-column edit layout to stack into one column. Pair with the per-field
+// "full width" edit-view setting (see docs Part 10c).
+const MOBILE_CSS = `
+@media (max-width: 767px) {
+  /* Stop iOS Safari zooming when a field gains focus + readable text */
+  input, textarea, select, [role="combobox"], [role="textbox"], [contenteditable] {
+    font-size: 16px !important;
+  }
+  /* Comfortable touch targets */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  [role="combobox"] {
+    min-height: 44px !important;
+  }
+  button:not([aria-hidden="true"]), a[role="button"] {
+    min-height: 40px !important;
+  }
+  /* Use the full screen width — trim the wide desktop gutters */
+  main { padding-left: 10px !important; padding-right: 10px !important; }
+  /* Stack any 2+ column CSS grids in the content area (edit form + side panel,
+     relation rows) into a single column so nothing scrolls off-screen */
+  main [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+}
+`;
+
+function injectMobileStyles(): void {
+  if (document.getElementById(MOBILE_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = MOBILE_STYLE_ID;
+  style.textContent = MOBILE_CSS;
+  document.head.appendChild(style);
+}
 
 function isLoginPage(): boolean {
   return window.location.pathname.endsWith('/auth/login');
@@ -48,7 +88,9 @@ function injectSsoButton(): void {
 
 export default {
   config: {
-    locales: [],
+    // Enable the Spanish admin UI so the (Spanish-speaking) owner can switch the
+    // whole panel to Español in her profile. English stays available too.
+    locales: ['es'],
   },
   register(app: StrapiApp) {
     // Surface A — the "Retoques" dashboard page (plan §4.2).
@@ -68,6 +110,7 @@ export default {
     });
   },
   bootstrap(_app: StrapiApp) {
+    injectMobileStyles();
     injectSsoButton();
 
     const observer = new MutationObserver(() => injectSsoButton());

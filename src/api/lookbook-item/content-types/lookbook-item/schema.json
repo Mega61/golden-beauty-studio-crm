@@ -1,0 +1,36 @@
+{
+  "kind": "collectionType",
+  "collectionName": "lookbook_items",
+  "info": {
+    "singularName": "lookbook-item",
+    "pluralName": "lookbook-items",
+    "displayName": "Lookbook Item",
+    "description": "A single nail-look photo shown in the landing lookbook mosaic. Upload the photo and it is watermarked automatically."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "caption": {
+      "type": "string",
+      "required": true
+    },
+    "photo": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": ["images"]
+    },
+    "category": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::lookbook-category.lookbook-category",
+      "inversedBy": "items"
+    },
+    "order": {
+      "type": "integer",
+      "default": 0
+    }
+  }
+}

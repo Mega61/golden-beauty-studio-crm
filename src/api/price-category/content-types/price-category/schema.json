@@ -1,0 +1,44 @@
+{
+  "kind": "collectionType",
+  "collectionName": "price_categories",
+  "info": {
+    "singularName": "price-category",
+    "pluralName": "price-categories",
+    "displayName": "Price Category",
+    "description": "A group of services in the landing price list (Montajes, Retoques, …). Labels are bilingual (es/en). Lower 'order' shows first."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "slug": {
+      "type": "uid",
+      "required": true
+    },
+    "label_es": {
+      "type": "string",
+      "required": true
+    },
+    "label_en": {
+      "type": "string",
+      "required": true
+    },
+    "sub_es": {
+      "type": "string"
+    },
+    "sub_en": {
+      "type": "string"
+    },
+    "order": {
+      "type": "integer",
+      "default": 0
+    },
+    "items": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::price-item.price-item",
+      "mappedBy": "category"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "collectionType",
+  "collectionName": "studio_photos",
+  "info": {
+    "singularName": "studio-photo",
+    "pluralName": "studio-photos",
+    "displayName": "Studio Photo",
+    "description": "A photo of the studio space, shown in the '05 — El estudio' section. Add, remove or reorder these to change that gallery."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "photo": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": ["images"]
+    },
+    "alt": {
+      "type": "string"
+    },
+    "order": {
+      "type": "integer",
+      "default": 0
+    }
+  }
+}
