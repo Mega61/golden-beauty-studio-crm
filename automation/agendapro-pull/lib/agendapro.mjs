@@ -4,6 +4,10 @@
  * obtains a Cognito Bearer (from the app's own API calls or its cookies), runs the
  * report API, polls until ready, and returns the S3 download URL. See plan §2.1 / §2.2.
  *
+ * The report window spans `windowDays` back to `windowForwardDays` forward: the forward
+ * reach captures future-dated bookings (re-bookings made after a reminder) so Strapi can
+ * mark those clients "Agendada".
+ *
  * On any failure it writes a screenshot + URL + cookie-name dump to ./debug for the
  * workflow to upload as an artifact (the only way to see what the headless run hit).
  *
@@ -89,9 +93,13 @@ async function doLogin(page, { email, password, getOtp }) {
   }
 }
 
-async function pullReportUrl(request, bearer, windowDays) {
+async function pullReportUrl(request, bearer, windowDays, windowForwardDays) {
   const headers = { authorization: bearer, 'content-type': 'application/json', origin: APP, referer: `${APP}/` };
-  const end = new Date();
+  // Window runs from `windowDays` in the past to `windowForwardDays` in the future.
+  // The forward reach matters: the report filters on start_time, so future-dated
+  // bookings (a client re-booking after a reminder) only appear when end_date is
+  // ahead of today — that's what lets Strapi mark them "Agendada / ya vuelve".
+  const end = new Date(Date.now() + windowForwardDays * 86_400_000);
   const start = new Date(Date.now() - windowDays * 86_400_000);
   const body = { periods: [{ start_date: isoDate(start), end_date: isoDate(end) }], booking_date: 'start_time' };
 
@@ -111,7 +119,7 @@ async function pullReportUrl(request, bearer, windowDays) {
 }
 
 /** @returns {Promise<{ s3Url: string, storageState: object }>} */
-export async function acquireReportUrl({ email, password, getOtp, storageState, windowDays }) {
+export async function acquireReportUrl({ email, password, getOtp, storageState, windowDays, windowForwardDays }) {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   let context;
   let page;
@@ -165,7 +173,7 @@ export async function acquireReportUrl({ email, password, getOtp, storageState, 
       throw new Error('Could not obtain Authorization bearer after login');
     }
 
-    const s3Url = await pullReportUrl(context.request, bearer, windowDays);
+    const s3Url = await pullReportUrl(context.request, bearer, windowDays, windowForwardDays);
     const newState = await context.storageState();
     return { s3Url, storageState: newState };
   } catch (err) {

@@ -9,6 +9,8 @@ load cached session
   → Playwright: open reports page
       → if logged out: email+password, then 2FA code (fetched from Gmail) → save session
   → POST .../reports/files/booking_history   { periods, booking_date:"start_time" }
+      (window: WINDOW_DAYS back … WINDOW_FORWARD_DAYS forward — the forward reach
+       pulls future bookings so re-bookers get marked "Agendada" in Strapi)
   → poll .../reports/files/check/{id}         until { value:true, file_uri:<S3 url> }
   → download the S3 xlsx
   → POST it to {INGEST_URL} with x-ingest-secret   (Strapi parses + upserts + recomputes)
@@ -50,7 +52,8 @@ reads just that, read-only.
 | --- | --- |
 | `INGEST_URL` | `https://cms.goldenbeautystudio.com.co/api/ingest/agendapro-report` |
 | `OTP_SENDER` | AgendaPro 2FA sender (e.g. `noreply@agendapro.com`) |
-| `WINDOW_DAYS` | `35` (rolling window: 21-day cadence + buffer) |
+| `WINDOW_DAYS` | `35` (rolling window back: 21-day cadence + buffer) |
+| `WINDOW_FORWARD_DAYS` | `30` (window forward: captures future/re-booked appointments so clients get marked "Agendada"). Optional — defaults to `30` when unset. |
 
 ## Run / test
 - Manually: repo → **Actions → AgendaPro daily pull → Run workflow**.

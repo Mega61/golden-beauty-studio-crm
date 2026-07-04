@@ -54,6 +54,7 @@ jobs:
           INGEST_URL: ${{ vars.INGEST_URL }}
           INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
           WINDOW_DAYS: ${{ vars.WINDOW_DAYS }}
+          WINDOW_FORWARD_DAYS: ${{ vars.WINDOW_FORWARD_DAYS }}
           SESSION_FILE: .session/agendapro.json
 
       # Diagnostics: on failure, the job writes a screenshot + url + cookie-name dump

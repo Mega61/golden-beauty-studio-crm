@@ -42,11 +42,12 @@ async function main() {
     ingestUrl: env('INGEST_URL'),
     ingestSecret: env('INGEST_SHARED_SECRET'),
     windowDays: Number(env('WINDOW_DAYS', false, '35')),
+    windowForwardDays: Number(env('WINDOW_FORWARD_DAYS', false, '30')),
     sessionFile: env('SESSION_FILE', false, '.session/agendapro.json'),
   };
 
   const startedAt = new Date().toISOString();
-  console.log(`[pull] start ${startedAt} (window ${cfg.windowDays}d)`);
+  console.log(`[pull] start ${startedAt} (window -${cfg.windowDays}d..+${cfg.windowForwardDays}d)`);
 
   const getOtp = (sinceEpochMs) =>
     fetchLatestOtp({
@@ -62,6 +63,7 @@ async function main() {
     getOtp,
     storageState: loadSession(cfg.sessionFile),
     windowDays: cfg.windowDays,
+    windowForwardDays: cfg.windowForwardDays,
   });
   saveSession(cfg.sessionFile, storageState); // persist refreshed cookies
   console.log('[pull] report ready, downloading…');
