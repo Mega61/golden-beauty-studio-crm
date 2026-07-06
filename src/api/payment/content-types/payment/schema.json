@@ -1,0 +1,51 @@
+{
+  "kind": "collectionType",
+  "collectionName": "payments",
+  "info": {
+    "singularName": "payment",
+    "pluralName": "payments",
+    "displayName": "Payment",
+    "description": "A money-in event from the AgendaPro transactions report. Idempotency key = tx_id. Feeds the Actual Budget sync."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "tx_id": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "sale_id": {
+      "type": "string"
+    },
+    "paid_at": {
+      "type": "date",
+      "required": true
+    },
+    "amount": {
+      "type": "integer",
+      "required": true
+    },
+    "tip": {
+      "type": "integer",
+      "default": 0
+    },
+    "method": {
+      "type": "enumeration",
+      "enum": ["efectivo", "transferencia", "otro"],
+      "required": true
+    },
+    "payment_status": {
+      "type": "string"
+    },
+    "synced_to_actual": {
+      "type": "boolean",
+      "default": false
+    },
+    "actual_txn_id": {
+      "type": "string"
+    }
+  }
+}

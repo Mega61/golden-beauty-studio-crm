@@ -18,6 +18,24 @@ export default {
     },
     {
       method: 'POST',
+      path: '/ingest/agendapro-transactions',
+      handler: 'ingest.agendaproTransactions',
+      config: { auth: false },
+    },
+    {
+      method: 'GET',
+      path: '/ingest/agendapro-incomes',
+      handler: 'ingest.agendaproIncomes',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
+      path: '/ingest/agendapro-incomes/mark-synced',
+      handler: 'ingest.agendaproIncomesMarkSynced',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
       path: '/ingest/stampee',
       handler: 'ingest.stampee',
       config: { auth: false },

@@ -79,6 +79,63 @@ export default {
     ctx.body = { ok: true, summary };
   },
 
+  /**
+   * AgendaPro *transactions* report intake (the money ledger). Multipart xlsx, field
+   * "report" like agendaproReport. Upserts Payment rows by tx_id; these are later pushed
+   * to Actual Budget by the actual-sync job. No winback recompute — this report is purely
+   * financial and doesn't touch visits/clients.
+   */
+  async agendaproTransactions(ctx: any) {
+    if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
+
+    const files = (ctx.request.files ?? {}) as Record<string, any>;
+    const file = files.report ?? Object.values(files)[0];
+    const filepath = file?.filepath ?? file?.path;
+    if (!filepath) return ctx.badRequest('Missing xlsx file (multipart field "report").');
+
+    let summary: any;
+    try {
+      summary = await strapi.service('api::payment.ingest').ingestTransactionsFile(filepath);
+    } catch (err: any) {
+      strapi.log.error(`[ingest] transactions parse/ingest failed: ${err?.message}`);
+      return ctx.badRequest(`Transactions report could not be parsed: ${err?.message}`);
+    }
+
+    // Fail loud: a non-empty report that produced no payments is almost certainly broken.
+    if (summary.received > 0 && summary.payments_created + summary.payments_updated === 0) {
+      ctx.status = 422;
+      ctx.body = { ok: false, reason: 'zero_payments_ingested', summary };
+      return;
+    }
+    ctx.body = { ok: true, summary };
+  },
+
+  /**
+   * Read endpoint that drives the Actual Budget sync: payments not yet pushed to Actual,
+   * on/after `?since=YYYY-MM-DD` (the cutover guard). Returns income rows with the payment
+   * method already resolved so the sync can route each to the right account.
+   */
+  async agendaproIncomes(ctx: any) {
+    if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
+    const since = typeof ctx.query?.since === 'string' ? ctx.query.since : undefined;
+    const incomes = await strapi.service('api::payment.ingest').listUnsynced({ since });
+    ctx.body = { ok: true, count: incomes.length, incomes };
+  },
+
+  /**
+   * Callback from the actual-sync job: flag the given payments as pushed to Actual and
+   * record Actual's own txn ids. Body: { synced: [{ tx_id, actual_txn_id? }, ...] }.
+   */
+  async agendaproIncomesMarkSynced(ctx: any) {
+    if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
+    const synced = ctx.request.body?.synced;
+    if (!Array.isArray(synced)) {
+      return ctx.badRequest('Expected JSON body { synced: [{ tx_id, actual_txn_id? }] }.');
+    }
+    const result = await strapi.service('api::payment.ingest').markSynced(synced);
+    ctx.body = { ok: true, ...result };
+  },
+
   async stampee(ctx: any) {
     if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
 

@@ -597,6 +597,49 @@ export interface ApiLookbookItemLookbookItem
   };
 }
 
+export interface ApiPaymentPayment extends Struct.CollectionTypeSchema {
+  collectionName: 'payments';
+  info: {
+    description: 'A money-in event from the AgendaPro transactions report. Idempotency key = tx_id. Feeds the Actual Budget sync.';
+    displayName: 'Payment';
+    pluralName: 'payments';
+    singularName: 'payment';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    actual_txn_id: Schema.Attribute.String;
+    amount: Schema.Attribute.Integer & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::payment.payment'
+    > &
+      Schema.Attribute.Private;
+    method: Schema.Attribute.Enumeration<
+      ['efectivo', 'transferencia', 'otro']
+    > &
+      Schema.Attribute.Required;
+    paid_at: Schema.Attribute.Date & Schema.Attribute.Required;
+    payment_status: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    sale_id: Schema.Attribute.String;
+    synced_to_actual: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    tip: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    tx_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiPriceCategoryPriceCategory
   extends Struct.CollectionTypeSchema {
   collectionName: 'price_categories';
@@ -1426,6 +1469,7 @@ declare module '@strapi/strapi' {
       'api::hero.hero': ApiHeroHero;
       'api::lookbook-category.lookbook-category': ApiLookbookCategoryLookbookCategory;
       'api::lookbook-item.lookbook-item': ApiLookbookItemLookbookItem;
+      'api::payment.payment': ApiPaymentPayment;
       'api::price-category.price-category': ApiPriceCategoryPriceCategory;
       'api::price-item.price-item': ApiPriceItemPriceItem;
       'api::reminder.reminder': ApiReminderReminder;

@@ -57,3 +57,39 @@ export function parsePrice(raw: string | number | null | undefined): number | nu
   if (!digits) return null;
   return Number(digits);
 }
+
+/**
+ * Parse a *formatted* money value to whole COP. Unlike `parsePrice` (which just keeps
+ * digits — fine for the plain integers in the reservations report), this handles the
+ * transactions report's thousands separators and decimals, e.g. "30,000.00" → 30000 and
+ * "30.000,00" → 30000. Cents are dropped (COP is whole-peso). Returns null if unparseable.
+ *
+ * Decimal separator detection: when both '.' and ',' appear, the last one is the decimal
+ * sep; a lone separator counts as decimal only when it's the single separator with 1–2
+ * trailing digits (otherwise it's thousands grouping).
+ */
+export function parseMoney(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? Math.trunc(raw) : null;
+
+  const s = String(raw).trim().replace(/[^\d.,-]/g, '');
+  if (!s || s === '-') return null;
+
+  const lastDot = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+  let decSep: '.' | ',' | null = null;
+  if (lastDot >= 0 && lastComma >= 0) {
+    decSep = lastDot > lastComma ? '.' : ',';
+  } else if (lastComma >= 0) {
+    const trailing = s.length - lastComma - 1;
+    decSep = s.split(',').length === 2 && (trailing === 1 || trailing === 2) ? ',' : null;
+  } else if (lastDot >= 0) {
+    const trailing = s.length - lastDot - 1;
+    decSep = s.split('.').length === 2 && (trailing === 1 || trailing === 2) ? '.' : null;
+  }
+
+  const intText = (decSep ? s.slice(0, s.lastIndexOf(decSep)) : s).replace(/[.,]/g, '');
+  if (!intText || intText === '-') return null;
+  const n = Number(intText);
+  return Number.isFinite(n) ? n : null;
+}

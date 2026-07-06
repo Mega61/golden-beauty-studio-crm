@@ -19,10 +19,17 @@ import fs from 'node:fs';
 const APP = 'https://app.agendapro.com';
 const REPORTS_URL = `${APP}/bookings-reports/history`;
 const API = 'https://agendapro.com/api/views/admin/v2/reports/files';
+// The transactions (money) report: a single POST returns the S3 URL directly — no job
+// polling, unlike booking_history. Payload takes full ISO datetimes in Bogota time.
+const TX_EXPORT_API = 'https://agendapro.com/api/views/admin/v2/sales/transaction/export';
 const DEBUG_DIR = 'debug';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const isoDate = (d) => d.toISOString().slice(0, 10);
+// Colombia is UTC-5 year-round (no DST), so the -05:00 offset is safe to hardcode.
+// Shift by 5h before taking the date so a run just after UTC-midnight still resolves to
+// the correct Bogota calendar day.
+const bogotaDate = (d) => new Date(d.getTime() - 5 * 3_600_000).toISOString().slice(0, 10);
 const needsLogin = (url) => /sign_in|sign-in|two_factor|\/login/i.test(url);
 const looksLikeJwt = (v) => typeof v === 'string' && /eyJ[\w-]+\.[\w-]+\./.test(v);
 
@@ -118,8 +125,41 @@ async function pullReportUrl(request, bearer, windowDays, windowForwardDays) {
   throw new Error('Report not ready within timeout (check poll)');
 }
 
-/** @returns {Promise<{ s3Url: string, storageState: object }>} */
-export async function acquireReportUrl({ email, password, getOtp, storageState, windowDays, windowForwardDays }) {
+async function pullTransactionsUrl(request, bearer, financeWindowDays) {
+  const headers = { authorization: bearer, 'content-type': 'application/json', origin: APP, referer: `${APP}/` };
+  // Backward-only window (money already received). Full-day bounds in Bogota time.
+  const now = new Date();
+  const start = new Date(now.getTime() - financeWindowDays * 86_400_000);
+  const body = {
+    start_date: `${bogotaDate(start)}T00:00:00-05:00`,
+    end_date: `${bogotaDate(now)}T23:59:59-05:00`,
+    location_id: [],
+  };
+
+  const post = await request.post(TX_EXPORT_API, { headers, data: body });
+  if (!post.ok()) throw new Error(`transaction/export POST ${post.status()}: ${await post.text()}`);
+  const url = (await post.json()).url;
+  if (typeof url !== 'string' || !url) throw new Error('transaction/export returned no url');
+  return url;
+}
+
+/**
+ * Acquire both AgendaPro reports in one authenticated session (login/2FA fires at most
+ * once): the reservations report (booking_history, for CRM/winback) and the transactions
+ * report (money ledger, for the Actual Budget sync). `financeWindowDays` bounds the
+ * backward-only transactions window; when omitted it falls back to `windowDays`.
+ *
+ * @returns {Promise<{ s3Url: string, transactionsUrl: string, storageState: object }>}
+ */
+export async function acquireReportUrl({
+  email,
+  password,
+  getOtp,
+  storageState,
+  windowDays,
+  windowForwardDays,
+  financeWindowDays,
+}) {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   let context;
   let page;
@@ -174,8 +214,13 @@ export async function acquireReportUrl({ email, password, getOtp, storageState, 
     }
 
     const s3Url = await pullReportUrl(context.request, bearer, windowDays, windowForwardDays);
+    const transactionsUrl = await pullTransactionsUrl(
+      context.request,
+      bearer,
+      financeWindowDays ?? windowDays,
+    );
     const newState = await context.storageState();
-    return { s3Url, storageState: newState };
+    return { s3Url, transactionsUrl, storageState: newState };
   } catch (err) {
     if (page && context) await dumpDebug(page, context, 'failure');
     throw err;

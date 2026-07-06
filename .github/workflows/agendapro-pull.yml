@@ -52,9 +52,11 @@ jobs:
           GMAIL_IMPERSONATE: ${{ secrets.GMAIL_IMPERSONATE }}
           OTP_SENDER: ${{ vars.OTP_SENDER }}
           INGEST_URL: ${{ vars.INGEST_URL }}
+          INGEST_TRANSACTIONS_URL: ${{ vars.INGEST_TRANSACTIONS_URL }}
           INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
           WINDOW_DAYS: ${{ vars.WINDOW_DAYS }}
           WINDOW_FORWARD_DAYS: ${{ vars.WINDOW_FORWARD_DAYS }}
+          FINANCE_WINDOW_DAYS: ${{ vars.FINANCE_WINDOW_DAYS }}
           SESSION_FILE: .session/agendapro.json
 
       # Diagnostics: on failure, the job writes a screenshot + url + cookie-name dump
@@ -67,3 +69,36 @@ jobs:
           path: automation/agendapro-pull/debug/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Push the freshly-ingested payments into Actual Budget. Separate job so a finance
+  # failure can't roll back the CRM ingest above; runs only if the pull succeeded.
+  actual-sync:
+    needs: pull
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: automation/actual-sync
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Sync income to Actual Budget
+        run: node sync.mjs
+        env:
+          INGEST_URL: ${{ vars.INGEST_URL }}
+          INGEST_INCOMES_URL: ${{ vars.INGEST_INCOMES_URL }}
+          INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
+          ACTUAL_SERVER_URL: ${{ secrets.ACTUAL_SERVER_URL }}
+          ACTUAL_PASSWORD: ${{ secrets.ACTUAL_PASSWORD }}
+          ACTUAL_SYNC_ID: ${{ secrets.ACTUAL_SYNC_ID }}
+          ACTUAL_ACCT_BANCOLOMBIA: ${{ vars.ACTUAL_ACCT_BANCOLOMBIA }}
+          ACTUAL_ACCT_EFECTIVO: ${{ vars.ACTUAL_ACCT_EFECTIVO }}
+          ACTUAL_ACCT_DEFAULT: ${{ vars.ACTUAL_ACCT_DEFAULT }}
+          ACTUAL_CATEGORY_SERVICIOS: ${{ vars.ACTUAL_CATEGORY_SERVICIOS }}
+          ACTUAL_SYNC_SINCE: ${{ vars.ACTUAL_SYNC_SINCE }}

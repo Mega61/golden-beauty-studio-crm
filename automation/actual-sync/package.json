@@ -1,0 +1,16 @@
+{
+  "name": "actual-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "sync": "node sync.mjs",
+    "dry-run": "node sync.mjs --dry-run"
+  },
+  "dependencies": {
+    "@actual-app/api": "^26.7.0"
+  }
+}

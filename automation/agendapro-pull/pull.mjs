@@ -2,8 +2,10 @@
  * AgendaPro -> Strapi daily pull orchestrator (GitHub Actions cron).
  *
  * Flow: load cached session -> Playwright (login + email-2FA only if expired) ->
- * POST report -> poll check -> download S3 xlsx -> POST to Strapi intake. The session
- * (cookies) is persisted to SESSION_FILE so the browser/2FA only fires on expiry.
+ * acquire both reports (reservations for CRM, transactions for finance) -> download each
+ * S3 xlsx -> POST to the matching Strapi intake. The session (cookies) is persisted to
+ * SESSION_FILE so the browser/2FA only fires on expiry. The Actual Budget push runs as a
+ * separate job (automation/actual-sync) off the Payment rows this creates.
  *
  * Fails loud (non-zero exit) on any error so the CI run goes red and notifies.
  */
@@ -44,14 +46,27 @@ async function main() {
     impersonate: env('GMAIL_IMPERSONATE'),
     otpSender: env('OTP_SENDER', false, 'noreply@agendapro.com'),
     ingestUrl: env('INGEST_URL'),
+    // Transactions (money) intake. Defaults to the sibling route of INGEST_URL, so a
+    // single INGEST_URL var keeps working with no extra config.
+    ingestTransactionsUrl: env(
+      'INGEST_TRANSACTIONS_URL',
+      false,
+      env('INGEST_URL').replace(/agendapro-report\b.*$/, 'agendapro-transactions'),
+    ),
     ingestSecret: env('INGEST_SHARED_SECRET'),
     windowDays: Number(env('WINDOW_DAYS', false, '35')),
     windowForwardDays: Number(env('WINDOW_FORWARD_DAYS', false, '30')),
+    // Backward-only window for the money report. Small by default: the daily run only
+    // needs recent payments, and a short window keeps re-ingests cheap (upsert by tx_id).
+    financeWindowDays: Number(env('FINANCE_WINDOW_DAYS', false, '10')),
     sessionFile: env('SESSION_FILE', false, '.session/agendapro.json'),
   };
 
   const startedAt = new Date().toISOString();
-  console.log(`[pull] start ${startedAt} (window -${cfg.windowDays}d..+${cfg.windowForwardDays}d)`);
+  console.log(
+    `[pull] start ${startedAt} (reservas -${cfg.windowDays}d..+${cfg.windowForwardDays}d, ` +
+      `transacciones -${cfg.financeWindowDays}d)`,
+  );
 
   const getOtp = (sinceEpochMs) =>
     fetchLatestOtp({
@@ -61,28 +76,43 @@ async function main() {
       sinceEpochMs,
     });
 
-  const { s3Url, storageState } = await acquireReportUrl({
+  const { s3Url, transactionsUrl, storageState } = await acquireReportUrl({
     email: cfg.email,
     password: cfg.password,
     getOtp,
     storageState: loadSession(cfg.sessionFile),
     windowDays: cfg.windowDays,
     windowForwardDays: cfg.windowForwardDays,
+    financeWindowDays: cfg.financeWindowDays,
   });
   saveSession(cfg.sessionFile, storageState); // persist refreshed cookies
-  console.log('[pull] report ready, downloading…');
+  const day = startedAt.slice(0, 10);
 
+  // 1. Reservations report -> visits (CRM / winback).
+  console.log('[pull] reservations report ready, downloading…');
   const buffer = await downloadReport(s3Url);
-  const filename = `reservas_${startedAt.slice(0, 10)}.xlsx`;
-  console.log(`[pull] downloaded ${buffer.length} bytes, uploading to Strapi…`);
-
+  console.log(`[pull] reservas ${buffer.length} bytes, uploading to Strapi…`);
   const result = await uploadToStrapi({
     url: cfg.ingestUrl,
     secret: cfg.ingestSecret,
     buffer,
-    filename,
+    filename: `reservas_${day}.xlsx`,
   });
-  console.log('[pull] intake result:', JSON.stringify(result));
+  console.log('[pull] reservas intake result:', JSON.stringify(result));
+
+  // 2. Transactions report -> payments (finance / Actual Budget). Kept independent: a
+  //    failure here still leaves the CRM ingest above committed.
+  console.log('[pull] transactions report ready, downloading…');
+  const txBuffer = await downloadReport(transactionsUrl);
+  console.log(`[pull] transacciones ${txBuffer.length} bytes, uploading to Strapi…`);
+  const txResult = await uploadToStrapi({
+    url: cfg.ingestTransactionsUrl,
+    secret: cfg.ingestSecret,
+    buffer: txBuffer,
+    filename: `transacciones_${day}.xlsx`,
+  });
+  console.log('[pull] transacciones intake result:', JSON.stringify(txResult));
+
   console.log(`[pull] OK ${new Date().toISOString()}`);
 }
 

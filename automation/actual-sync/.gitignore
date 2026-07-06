@@ -1,0 +1,3 @@
+node_modules/
+# Local copy of the budget that @actual-app/api downloads to work against.
+.actual-cache/

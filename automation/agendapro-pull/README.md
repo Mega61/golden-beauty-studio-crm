@@ -1,8 +1,9 @@
 # AgendaPro → Strapi daily pull
 
 Acquisition job for Priority 2. Runs on **GitHub Actions cron** (06:00 America/Bogota),
-logs into AgendaPro only when the cached session has expired, pulls the reservations
-report, and uploads it to Strapi's intake route. Strapi does all parsing/upsert.
+logs into AgendaPro only when the cached session has expired, and — in one authenticated
+session — pulls **two** reports: the reservations report (CRM/winback) and the
+transactions report (money ledger, for finance). Strapi does all parsing/upsert.
 
 ```
 load cached session
@@ -12,13 +13,21 @@ load cached session
       (window: WINDOW_DAYS back … WINDOW_FORWARD_DAYS forward — the forward reach
        pulls future bookings so re-bookers get marked "Agendada" in Strapi)
   → poll .../reports/files/check/{id}         until { value:true, file_uri:<S3 url> }
-  → download the S3 xlsx
-  → POST it to {INGEST_URL} with x-ingest-secret   (Strapi parses + upserts + recomputes)
+  → POST .../sales/transaction/export         { start_date, end_date, location_id:[] }
+      (FINANCE_WINDOW_DAYS back … today, Bogota time; returns the S3 URL directly — no
+       job polling. This report carries Método de Pago, unlike booking_history.)
+  → download each S3 xlsx
+  → POST reservations to {INGEST_URL}              (visits + recompute + Stampee)
+  → POST transactions to {INGEST_TRANSACTIONS_URL} (payments; feeds the Actual sync)
 ```
 
+The **Actual Budget** push runs as a separate job off the payment rows this creates — see
+`automation/actual-sync`.
+
 Captured contract this is built against: auth is an **AWS Cognito ID token** (12 h)
-sent as `Authorization`; the report endpoint returns a `file_uri` job id, then `check`
-returns an S3 URL when ready. Login uses **email 2FA**.
+sent as `Authorization`; `booking_history` returns a `file_uri` job id, then `check`
+returns an S3 URL when ready; `sales/transaction/export` returns `{ url }` directly.
+Login uses **email 2FA**.
 
 ## One-time setup
 
@@ -51,9 +60,14 @@ reads just that, read-only.
 | var | value |
 | --- | --- |
 | `INGEST_URL` | `https://cms.goldenbeautystudio.com.co/api/ingest/agendapro-report` |
+| `INGEST_TRANSACTIONS_URL` | Optional — the transactions intake. Defaults to the sibling `…/agendapro-transactions` route derived from `INGEST_URL`. |
 | `OTP_SENDER` | AgendaPro 2FA sender (e.g. `noreply@agendapro.com`) |
 | `WINDOW_DAYS` | `35` (rolling window back: 21-day cadence + buffer) |
 | `WINDOW_FORWARD_DAYS` | `30` (window forward: captures future/re-booked appointments so clients get marked "Agendada"). Optional — defaults to `30` when unset. |
+| `FINANCE_WINDOW_DAYS` | `10` (transactions window back). Optional — defaults to `10`. Payments upsert by `tx_id`, so a short window keeps daily re-ingests cheap. |
+
+The **actual-sync** job needs its own secrets/variables (`ACTUAL_*`) — see
+`automation/actual-sync/README.md`.
 
 ## Run / test
 - Manually: repo → **Actions → AgendaPro daily pull → Run workflow**.
