@@ -14,7 +14,11 @@ import { acquireReportUrl } from './lib/agendapro.mjs';
 import { downloadReport, uploadToStrapi } from './lib/strapi.mjs';
 
 function env(name, required = true, fallback = undefined) {
-  const v = process.env[name] ?? fallback;
+  // GitHub Actions renders an undefined `${{ vars.X }}` as an empty string, not as
+  // an absent env var — so treat '' as missing, otherwise the fallback never applies
+  // and `Number('')` silently becomes 0 (collapsing the report window to today).
+  const raw = process.env[name];
+  const v = raw === undefined || raw === '' ? fallback : raw;
   if (required && (v === undefined || v === '')) throw new Error(`Missing env ${name}`);
   return v;
 }
