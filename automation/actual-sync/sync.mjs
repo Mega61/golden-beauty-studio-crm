@@ -134,6 +134,10 @@ async function main() {
   }
 
   const { default: api } = await import('@actual-app/api');
+  const { mkdirSync } = await import('node:fs');
+  // Actual's init expects dataDir to already exist (it scandirs it); create it since
+  // it's gitignored and absent on a fresh CI runner.
+  mkdirSync(cfg.dataDir, { recursive: true });
   await api.init({ dataDir: cfg.dataDir, serverURL: cfg.serverUrl, password: cfg.password });
   try {
     await api.downloadBudget({ syncId: cfg.syncId });
