@@ -151,13 +151,25 @@ async function main() {
       }
     }
 
+    // Use addTransactions (pure insert), NOT importTransactions: the latter fuzzy-matches
+    // on amount+date and would silently merge an income into an unrelated manual entry
+    // with the same price (common in a salon). We keep idempotency ourselves by skipping
+    // any imported_id already present — guards the "import ok but mark-synced failed" re-run.
+    const endDate = bogotaToday();
     for (const [acct, txns] of byAccount) {
-      const r = await api.importTransactions(acct, txns);
+      const existing = await api.getTransactions(acct, cfg.since, endDate);
+      const seen = new Set(existing.map((t) => t.imported_id).filter(Boolean));
+      const fresh = txns.filter((t) => !seen.has(t.imported_id));
+      const skipped = txns.length - fresh.length;
+      if (fresh.length === 0) {
+        console.log(`[actual-sync] account ${acct}: nothing new (${skipped} already present)`);
+        continue;
+      }
+      const added = await api.addTransactions(acct, fresh);
       console.log(
-        `[actual-sync] account ${acct}: +${r.added?.length ?? 0} added, ${r.updated?.length ?? 0} updated` +
-          (r.errors?.length ? `, ${r.errors.length} error(s)` : ''),
+        `[actual-sync] account ${acct}: +${added.length} added` +
+          (skipped ? `, ${skipped} skipped (already present)` : ''),
       );
-      if (r.errors?.length) throw new Error(`importTransactions errors: ${JSON.stringify(r.errors)}`);
     }
   } finally {
     await api.shutdown();
