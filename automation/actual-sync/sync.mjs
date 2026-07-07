@@ -140,7 +140,7 @@ async function main() {
   mkdirSync(cfg.dataDir, { recursive: true });
   await api.init({ dataDir: cfg.dataDir, serverURL: cfg.serverUrl, password: cfg.password });
   try {
-    await api.downloadBudget({ syncId: cfg.syncId });
+    await api.downloadBudget(cfg.syncId);
 
     // Sanity-check the configured ids exist before writing.
     const accounts = await api.getAccounts();
