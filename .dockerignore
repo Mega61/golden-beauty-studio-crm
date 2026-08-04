@@ -5,3 +5,22 @@ automation/
 .git/
 build/
 .env
+
+# Locally-uploaded media. In production media lives in GCS, and a dev machine can
+# easily accumulate tens of MB here — none of which belongs in the image. CI builds
+# from a clean checkout so this only bites local `docker build`, but it bites hard:
+# every byte here lands in the app layer that has to be extracted on deploy.
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Compiled output: `strapi build` regenerates it inside the image. Shipping the
+# host's copy risks baking in stale JS that silently shadows the fresh build.
+dist/
+
+# Not needed at runtime.
+docs/
+.github/
+.claude/
+*.md
+.strapi/
+.strapi-updater.json

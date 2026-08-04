@@ -37,3 +37,33 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           build-args: |
             STRAPI_ADMIN_BACKEND_URL=https://cms.goldenbeautystudio.com.co
+
+      # Redeploy without going through the Portainer UI.
+      #
+      # Why this exists: clicking "Update the stack" in the browser holds one HTTP
+      # request open for the whole pull + extract. This image's node_modules layer
+      # (Strapi + sharp/libvips) takes well over a minute to unpack on a small VM,
+      # so the proxy in front of Portainer times out and answers 500 while Docker
+      # is still working. The webhook is fire-and-forget: Portainer pulls and
+      # recreates the stack server-side, with no browser request to expire.
+      #
+      # Setup (once): Portainer → the stack → Webhooks → create, copy the URL into
+      # the repo secret PORTAINER_WEBHOOK_URL. Treat it like a password — anyone
+      # holding it can redeploy. Without the secret this step is a no-op, so the
+      # workflow stays green for anyone who prefers deploying by hand.
+      - name: Trigger Portainer redeploy
+        env:
+          WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "PORTAINER_WEBHOOK_URL not set — skipping automatic redeploy."
+            echo "Deploy manually (see docs/DEPLOY.md) or add the secret."
+            exit 0
+          fi
+          code=$(curl -sS -X POST -o /dev/null -w '%{http_code}' --max-time 30 "$WEBHOOK")
+          echo "Portainer webhook responded $code"
+          # 2xx means Portainer accepted the job, not that the pull has finished.
+          case "$code" in
+            2*) echo "Redeploy queued. Watch the stack logs in Portainer." ;;
+            *) echo "::error::Portainer webhook rejected the request ($code)"; exit 1 ;;
+          esac
