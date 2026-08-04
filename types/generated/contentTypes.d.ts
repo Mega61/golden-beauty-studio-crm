@@ -524,6 +524,128 @@ export interface ApiHeroHero extends Struct.SingleTypeSchema {
   };
 }
 
+export interface ApiJobApplicationJobApplication
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'job_applications';
+  info: {
+    description: "Una postulaci\u00F3n enviada desde 'Trabaja con nosotros' (p\u00E1gina propia) o desde el /bio. Se crea sola: no se agregan a mano. Usa Triage status para el seguimiento y descarga la hoja de vida desde el campo CV. 'role' apunta al Cargo (vacante) y 'role_applied' guarda el nombre del cargo tal como estaba el d\u00EDa de la postulaci\u00F3n, para que el hist\u00F3rico no cambie si luego renombras o borras la vacante. (El campo se llama triage_status y no status porque el Content Manager reserva 'status' para el estado de publicaci\u00F3n y sobreescribir\u00EDa el valor.)";
+    displayName: 'Postulaci\u00F3n';
+    pluralName: 'job-applications';
+    singularName: 'job-application';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    consent: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    cv: Schema.Attribute.Media<'files' | 'images'> & Schema.Attribute.Required;
+    email: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 160;
+      }>;
+    experience: Schema.Attribute.Enumeration<
+      ['sin_experiencia', 'menos_de_1', 'de_1_a_3', 'de_3_a_5', 'mas_de_5']
+    >;
+    full_name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 120;
+      }>;
+    internal_notes: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::job-application.job-application'
+    > &
+      Schema.Attribute.Private;
+    message: Schema.Attribute.Text &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 2000;
+      }>;
+    phone: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 20;
+      }>;
+    portfolio_url: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 300;
+      }>;
+    publishedAt: Schema.Attribute.DateTime;
+    role: Schema.Attribute.Relation<'manyToOne', 'api::job-role.job-role'>;
+    role_applied: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 60;
+      }>;
+    source_lang: Schema.Attribute.Enumeration<['es', 'en']>;
+    source_surface: Schema.Attribute.Enumeration<['landing', 'bio']>;
+    submitted_ip_hash: Schema.Attribute.String &
+      Schema.Attribute.Private &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 64;
+      }>;
+    techniques: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 240;
+      }>;
+    triage_status: Schema.Attribute.Enumeration<
+      ['nueva', 'en_revision', 'entrevista', 'contratada', 'descartada']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'nueva'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiJobRoleJobRole extends Struct.CollectionTypeSchema {
+  collectionName: 'job_roles';
+  info: {
+    description: "Los cargos a los que alguien puede postularse en 'Trabaja con nosotros'. Agrega, renombra o reordena estos y el formulario de la web cambia solo. Para cerrar una vacante sin perder el hist\u00F3rico, desmarca 'active' en vez de borrarla.";
+    displayName: 'Cargo (vacante)';
+    pluralName: 'job-roles';
+    singularName: 'job-role';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    active: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<true>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    label_en: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 60;
+      }>;
+    label_es: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 60;
+      }>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::job-role.job-role'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID<'label_es'> & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiLookbookCategoryLookbookCategory
   extends Struct.CollectionTypeSchema {
   collectionName: 'lookbook_categories';
@@ -1467,6 +1589,8 @@ declare module '@strapi/strapi' {
       'admin::user': AdminUser;
       'api::client.client': ApiClientClient;
       'api::hero.hero': ApiHeroHero;
+      'api::job-application.job-application': ApiJobApplicationJobApplication;
+      'api::job-role.job-role': ApiJobRoleJobRole;
       'api::lookbook-category.lookbook-category': ApiLookbookCategoryLookbookCategory;
       'api::lookbook-item.lookbook-item': ApiLookbookItemLookbookItem;
       'api::payment.payment': ApiPaymentPayment;

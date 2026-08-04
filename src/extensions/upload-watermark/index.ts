@@ -30,6 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import type { Core } from '@strapi/strapi';
+import { CAREERS_FOLDER_NAME } from '../../cms/careers';
 
 // Tuned to match the landing's watermark-lookbook.mjs SETTINGS exactly.
 const SETTINGS = {
@@ -192,18 +193,24 @@ async function shouldWatermark(
 ): Promise<boolean> {
   if (process.env.WATERMARK_ENABLED === 'false') return false;
 
+  // Job-application CVs are private documents, not brand assets — a resume the
+  // applicant photographed with her phone must never come back with the studio
+  // wordmark stamped across it. Hard-coded (not env-driven) so no misconfigured
+  // WATERMARK_* var can reintroduce the bug. `folder` is already populated at
+  // this point: formatFileInfo() sets it before calling optimize().
+  const folderName = await resolveFolderName(file, strapi);
+  if (folderName === CAREERS_FOLDER_NAME) return false;
+
   // Inverse mode: only the named folder gets watermarked.
   const includeOnly = process.env.WATERMARK_FOLDER?.trim();
   if (includeOnly) {
-    const name = await resolveFolderName(file, strapi);
-    return name === includeOnly;
+    return folderName === includeOnly;
   }
 
   // Default mode: watermark everything except the excluded folders.
   const excluded = parseList(process.env.WATERMARK_EXCLUDE_FOLDERS);
   if (excluded.length === 0) return true;
-  const name = await resolveFolderName(file, strapi);
-  return !(name && excluded.includes(name));
+  return !(folderName && excluded.includes(folderName));
 }
 
 let patched = false;
@@ -255,5 +262,7 @@ export function registerWatermark(strapi: Core.Strapi): void {
     : excluded.length
       ? `all images except folders [${excluded.join(', ')}]`
       : 'all images';
-  strapi.log.info(`[upload-watermark] active (scope: ${scopeDesc})`);
+  strapi.log.info(
+    `[upload-watermark] active (scope: ${scopeDesc}; "${CAREERS_FOLDER_NAME}" CVs always unmarked)`,
+  );
 }

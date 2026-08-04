@@ -37,6 +37,10 @@ const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Plugin =>
           { uid: 'api::studio-photo.studio-photo', published: { url: `${landing}/es#estudio` } },
           { uid: 'api::price-category.price-category', published: { url: `${landing}/es#servicios` } },
           { uid: 'api::price-item.price-item', published: { url: `${landing}/es#servicios` } },
+          {
+            uid: 'api::job-role.job-role',
+            published: { url: `${landing}/es/trabaja-con-nosotros` },
+          },
         ];
       })(),
     },

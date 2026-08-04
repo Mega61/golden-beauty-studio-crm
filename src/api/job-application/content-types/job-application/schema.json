@@ -1,0 +1,100 @@
+{
+  "kind": "collectionType",
+  "collectionName": "job_applications",
+  "info": {
+    "singularName": "job-application",
+    "pluralName": "job-applications",
+    "displayName": "Postulación",
+    "description": "Una postulación enviada desde 'Trabaja con nosotros' (página propia) o desde el /bio. Se crea sola: no se agregan a mano. Usa Triage status para el seguimiento y descarga la hoja de vida desde el campo CV. 'role' apunta al Cargo (vacante) y 'role_applied' guarda el nombre del cargo tal como estaba el día de la postulación, para que el histórico no cambie si luego renombras o borras la vacante. (El campo se llama triage_status y no status porque el Content Manager reserva 'status' para el estado de publicación y sobreescribiría el valor.)"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "full_name": {
+      "type": "string",
+      "required": true,
+      "maxLength": 120
+    },
+    "phone": {
+      "type": "string",
+      "required": true,
+      "maxLength": 20
+    },
+    "email": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "role_applied": {
+      "type": "string",
+      "required": true,
+      "maxLength": 60
+    },
+    "role": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::job-role.job-role"
+    },
+    "experience": {
+      "type": "enumeration",
+      "enum": [
+        "sin_experiencia",
+        "menos_de_1",
+        "de_1_a_3",
+        "de_3_a_5",
+        "mas_de_5"
+      ]
+    },
+    "techniques": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "portfolio_url": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "message": {
+      "type": "text",
+      "maxLength": 2000
+    },
+    "cv": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": ["files", "images"]
+    },
+    "consent": {
+      "type": "boolean",
+      "default": false
+    },
+    "triage_status": {
+      "type": "enumeration",
+      "required": true,
+      "default": "nueva",
+      "enum": [
+        "nueva",
+        "en_revision",
+        "entrevista",
+        "contratada",
+        "descartada"
+      ]
+    },
+    "internal_notes": {
+      "type": "text"
+    },
+    "source_surface": {
+      "type": "enumeration",
+      "enum": ["landing", "bio"]
+    },
+    "source_lang": {
+      "type": "enumeration",
+      "enum": ["es", "en"]
+    },
+    "submitted_ip_hash": {
+      "type": "string",
+      "private": true,
+      "maxLength": 64
+    }
+  }
+}

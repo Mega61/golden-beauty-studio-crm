@@ -23,6 +23,8 @@ const WATCHED_UIDS = [
   'api::studio-photo.studio-photo',
   'api::price-category.price-category',
   'api::price-item.price-item',
+  // Cargos drive the chips on /trabaja-con-nosotros and the /bio form.
+  'api::job-role.job-role',
 ];
 
 export function registerRevalidation(strapi: Core.Strapi): void {

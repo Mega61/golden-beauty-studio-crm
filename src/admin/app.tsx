@@ -1,5 +1,5 @@
 import type { StrapiApp } from '@strapi/strapi/admin';
-import { Clock } from '@strapi/icons';
+import { Clock, Briefcase } from '@strapi/icons';
 import WinbackBadge from './components/WinbackBadge';
 
 const SSO_URL = '/strapi-plugin-sso/google';
@@ -100,6 +100,17 @@ export default {
       intlLabel: { id: 'winback.menu.label', defaultMessage: 'Retoques' },
       permissions: [],
       Component: () => import('./pages/Winback'),
+    });
+
+    // Surface C — "Postulaciones": triage for the Trabaja con nosotros form.
+    // Entries arrive from the landing / the Instagram bio link; this page answers
+    // "who applied and do I want to call them?" without paging through the CM.
+    app.addMenuLink({
+      to: '/postulaciones',
+      icon: Briefcase,
+      intlLabel: { id: 'postulaciones.menu.label', defaultMessage: 'Postulaciones' },
+      permissions: [],
+      Component: () => import('./pages/Postulaciones'),
     });
 
     // Surface B — inline retoque badge in the Client edit view (plan §4.3).

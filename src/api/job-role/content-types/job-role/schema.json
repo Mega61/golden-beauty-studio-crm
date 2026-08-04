@@ -1,0 +1,40 @@
+{
+  "kind": "collectionType",
+  "collectionName": "job_roles",
+  "info": {
+    "singularName": "job-role",
+    "pluralName": "job-roles",
+    "displayName": "Cargo (vacante)",
+    "description": "Los cargos a los que alguien puede postularse en 'Trabaja con nosotros'. Agrega, renombra o reordena estos y el formulario de la web cambia solo. Para cerrar una vacante sin perder el histórico, desmarca 'active' en vez de borrarla."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "slug": {
+      "type": "uid",
+      "targetField": "label_es",
+      "required": true
+    },
+    "label_es": {
+      "type": "string",
+      "required": true,
+      "maxLength": 60
+    },
+    "label_en": {
+      "type": "string",
+      "required": true,
+      "maxLength": 60
+    },
+    "order": {
+      "type": "integer",
+      "default": 0
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "required": true
+    }
+  }
+}
