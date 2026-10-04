@@ -10,9 +10,10 @@ export async function downloadReport(s3Url) {
   return buf;
 }
 
-export async function uploadToStrapi({ url, secret, buffer, filename }) {
+export async function uploadToStrapi({ url, secret, buffer, filename, fields = {} }) {
   const form = new FormData();
   form.append('report', new Blob([buffer]), filename);
+  for (const [k, v] of Object.entries(fields)) form.append(k, String(v));
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'x-ingest-secret': secret },

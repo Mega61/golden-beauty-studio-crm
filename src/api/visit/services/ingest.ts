@@ -46,6 +46,14 @@ export interface IngestSummary {
   visits_created: number;
   visits_updated: number;
   flagged_review: number;
+  /** Visits inside the report window that the report no longer contains (see sweep). */
+  visits_cancelled_missing?: number;
+}
+
+/** The service-date range an AgendaPro report covers (inclusive, ISO YYYY-MM-DD). */
+export interface ReportWindow {
+  start: string;
+  end: string;
 }
 
 export default ({ strapi }: { strapi: Core.Strapi }) => ({
@@ -80,6 +88,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
    * plan §1.2). Returns per-record effects so the caller can total them.
    */
   async upsertBooking(b: NormalizedBooking): Promise<{
+    bookingId: string;
     clientCreated: boolean;
     clientUpdated: boolean;
     visitCreated: boolean;
@@ -87,6 +96,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     flaggedReview: boolean;
   }> {
     const result = {
+      bookingId: '',
       clientCreated: false,
       clientUpdated: false,
       visitCreated: false,
@@ -147,6 +157,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // --- Visit upsert by booking_id ---
     const booking_id = b.booking_id || synthBookingId(b.phone, b.service_date, b.service_name);
+    result.bookingId = booking_id;
     const existingVisits = (await strapi.documents(VISIT_UID).findMany({
       filters: { booking_id },
       limit: 1,
@@ -179,7 +190,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 
   /** Upsert many already-normalized bookings (P2 intake route entry point). */
-  async upsertMany(bookings: NormalizedBooking[]): Promise<IngestSummary> {
+  async upsertMany(bookings: NormalizedBooking[], seen?: Set<string>): Promise<IngestSummary> {
     const summary: IngestSummary = {
       received: bookings.length,
       skipped_no_phone: 0,
@@ -192,6 +203,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     };
     for (const b of bookings) {
       const r = await this.upsertBooking(b);
+      seen?.add(r.bookingId);
       if (r.clientCreated) summary.clients_created++;
       if (r.clientUpdated) summary.clients_updated++;
       if (r.visitCreated) summary.visits_created++;
@@ -201,8 +213,44 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     return summary;
   },
 
+  /**
+   * Cancel the visits strictly inside `window` that this report no longer contains.
+   *
+   * AgendaPro's export has no booking id, so the visit id is synthesized from
+   * (phone, date, service). When a booking's service is changed in AgendaPro, the new
+   * service hashes to a NEW visit and the old one simply stops appearing — it would stay
+   * frozen in its last status ("completed", "upcoming") forever. The report filters on
+   * start_time and includes cancelled bookings, so inside its window "absent" means
+   * "no longer a booking".
+   */
+  async cancelMissing(window: ReportWindow, seen: Set<string>): Promise<number> {
+    const inWindow = (await strapi.documents(VISIT_UID).findMany({
+      filters: {
+        // Strictly inside: whether AgendaPro includes the edge days is undocumented, and
+        // a wrong guess would cancel real bookings there. The daily run re-covers them.
+        service_date: { $gt: window.start, $lt: window.end },
+        status: { $ne: 'cancelled' },
+      },
+      fields: ['booking_id', 'service_date', 'service_name'],
+      limit: 10000,
+    })) as any[];
+    let cancelled = 0;
+    for (const v of inWindow) {
+      if (seen.has(v.booking_id)) continue;
+      await strapi.documents(VISIT_UID).update({
+        documentId: v.documentId,
+        data: { status: 'cancelled' } as any,
+      });
+      strapi.log.info(
+        `[ingest] visit ${v.booking_id} (${v.service_date} ${v.service_name}) missing from report: cancelled`,
+      );
+      cancelled++;
+    }
+    return cancelled;
+  },
+
   /** Ingest raw AgendaPro export rows (manual import entry point). */
-  async ingestAgendaProRows(rows: AgendaProRawRow[]): Promise<IngestSummary> {
+  async ingestAgendaProRows(rows: AgendaProRawRow[], window?: ReportWindow): Promise<IngestSummary> {
     const normalized: NormalizedBooking[] = [];
     let skipped_no_phone = 0;
     let skipped_bad_date = 0;
@@ -217,10 +265,16 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       normalized.push(n);
     }
 
-    const summary = await this.upsertMany(normalized);
+    const seen = new Set<string>();
+    const summary = await this.upsertMany(normalized, seen);
     summary.received = rows.length;
     summary.skipped_no_phone = skipped_no_phone;
     summary.skipped_bad_date = skipped_bad_date;
+    // Never sweep on a report that ingested nothing: that's a broken report, not an
+    // empty agenda (the controller fails loud on it).
+    if (window && seen.size > 0) {
+      summary.visits_cancelled_missing = await this.cancelMissing(window, seen);
+    }
     return summary;
   },
 
@@ -229,8 +283,8 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
    * point for both the manual script and the automated intake route (P2) — parsing,
    * normalization, upsert and recompute all stay here. See plan §2.3.
    */
-  async ingestAgendaProFile(input: string | Buffer): Promise<IngestSummary> {
+  async ingestAgendaProFile(input: string | Buffer, window?: ReportWindow): Promise<IngestSummary> {
     const rows = parseAgendaProWorkbook(input);
-    return this.ingestAgendaProRows(rows);
+    return this.ingestAgendaProRows(rows, window);
   },
 });
