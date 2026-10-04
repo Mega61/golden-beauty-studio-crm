@@ -108,7 +108,8 @@ async function pullReportUrl(request, bearer, windowDays, windowForwardDays) {
   // ahead of today — that's what lets Strapi mark them "Agendada / ya vuelve".
   const end = new Date(Date.now() + windowForwardDays * 86_400_000);
   const start = new Date(Date.now() - windowDays * 86_400_000);
-  const body = { periods: [{ start_date: isoDate(start), end_date: isoDate(end) }], booking_date: 'start_time' };
+  const window = { start: isoDate(start), end: isoDate(end) };
+  const body = { periods: [{ start_date: window.start, end_date: window.end }], booking_date: 'start_time' };
 
   const post = await request.post(`${API}/booking_history`, { headers, data: body });
   if (!post.ok()) throw new Error(`booking_history POST ${post.status()}: ${await post.text()}`);
@@ -119,7 +120,9 @@ async function pullReportUrl(request, bearer, windowDays, windowForwardDays) {
     const check = await request.get(`${API}/check/${jobId}`, { headers });
     if (!check.ok()) throw new Error(`check GET ${check.status()}`);
     const j = await check.json();
-    if (j.value && typeof j.file_uri === 'string') return j.file_uri;
+    // The window goes back with the URL: Strapi needs the exact range the report
+    // covered to tell "booking gone from AgendaPro" apart from "booking out of range".
+    if (j.value && typeof j.file_uri === 'string') return { url: j.file_uri, window };
     await sleep(2_000);
   }
   throw new Error('Report not ready within timeout (check poll)');
@@ -149,7 +152,7 @@ async function pullTransactionsUrl(request, bearer, financeWindowDays) {
  * report (money ledger, for the Actual Budget sync). `financeWindowDays` bounds the
  * backward-only transactions window; when omitted it falls back to `windowDays`.
  *
- * @returns {Promise<{ s3Url: string, transactionsUrl: string, storageState: object }>}
+ * @returns {Promise<{ s3Url: string, reportWindow: { start: string, end: string }, transactionsUrl: string, storageState: object }>}
  */
 export async function acquireReportUrl({
   email,
@@ -213,14 +216,19 @@ export async function acquireReportUrl({
       throw new Error('Could not obtain Authorization bearer after login');
     }
 
-    const s3Url = await pullReportUrl(context.request, bearer, windowDays, windowForwardDays);
+    const { url: s3Url, window: reportWindow } = await pullReportUrl(
+      context.request,
+      bearer,
+      windowDays,
+      windowForwardDays,
+    );
     const transactionsUrl = await pullTransactionsUrl(
       context.request,
       bearer,
       financeWindowDays ?? windowDays,
     );
     const newState = await context.storageState();
-    return { s3Url, transactionsUrl, storageState: newState };
+    return { s3Url, reportWindow, transactionsUrl, storageState: newState };
   } catch (err) {
     if (page && context) await dumpDebug(page, context, 'failure');
     throw err;

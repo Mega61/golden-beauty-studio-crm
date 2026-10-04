@@ -76,7 +76,7 @@ async function main() {
       sinceEpochMs,
     });
 
-  const { s3Url, transactionsUrl, storageState } = await acquireReportUrl({
+  const { s3Url, reportWindow, transactionsUrl, storageState } = await acquireReportUrl({
     email: cfg.email,
     password: cfg.password,
     getOtp,
@@ -97,6 +97,9 @@ async function main() {
     secret: cfg.ingestSecret,
     buffer,
     filename: `reservas_${day}.xlsx`,
+    // The exact range the report covers, so Strapi can cancel the bookings that
+    // vanished from it (e.g. a service changed in AgendaPro gets a new synthetic id).
+    fields: { window_start: reportWindow.start, window_end: reportWindow.end },
   });
   console.log('[pull] reservas intake result:', JSON.stringify(result));
 

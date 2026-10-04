@@ -46,9 +46,19 @@ export default {
     const filepath = file?.filepath ?? file?.path;
     if (!filepath) return ctx.badRequest('Missing xlsx file (multipart field "report").');
 
+    // Optional: the date range the report covers (sent by the pull job). With it, the
+    // ingest cancels visits in that range that the report no longer contains. Without it
+    // (manual imports), nothing is swept.
+    const body = ctx.request.body ?? {};
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    const window =
+      iso.test(String(body.window_start ?? '')) && iso.test(String(body.window_end ?? ''))
+        ? { start: String(body.window_start), end: String(body.window_end) }
+        : undefined;
+
     let summary: any;
     try {
-      summary = await strapi.service('api::visit.ingest').ingestAgendaProFile(filepath);
+      summary = await strapi.service('api::visit.ingest').ingestAgendaProFile(filepath, window);
     } catch (err: any) {
       strapi.log.error(`[ingest] report parse/ingest failed: ${err?.message}`);
       return ctx.badRequest(`Report could not be parsed: ${err?.message}`);
