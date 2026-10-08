@@ -19,8 +19,9 @@
  * anything typed by hand in Actual is left alone.
  *
  * Courtesy sales — the owner's family, who are booked in AgendaPro only so the nail tech's
- * commission counts — never reach Actual: no money came in. Their clients are listed in
- * COURTESY_CLIENTS (";"-separated, matched ignoring case/accents/spacing). Each one is
+ * commission counts — never reach Actual: no money came in. Their phones are listed in
+ * COURTESY_PHONES (";"- or ","-separated, any format: 3016060945, +57 301 606 0945, …),
+ * matched against the client_phone Strapi looks up from the client's name. Each one is
  * marked synced with actual_txn_id "courtesy", so it doesn't come back and Strapi shows
  * it was left out on purpose. The name comes from the sales report, which can lag the
  * payment, so while the list is set a payment with no client yet waits up to
@@ -52,14 +53,11 @@ const fmtCOP = (minor) => `$${(minor / 100).toLocaleString('es-CO')}`;
 const daysBefore = (iso, days) =>
   new Date(Date.parse(iso) - days * 86_400_000).toISOString().slice(0, 10);
 
-// How AgendaPro client names are compared: it often adds a trailing space or drops an accent.
-const normName = (s) =>
-  String(s ?? '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+// Same as the CRM's normalizePhone: the last 10 digits, as +57XXXXXXXXXX.
+const normPhone = (s) => {
+  const digits = String(s ?? '').replace(/\D/g, '');
+  return digits.length < 10 ? null : `+57${digits.slice(-10)}`;
+};
 
 // The notes this job writes. Order matters to people reading them: who, what, then the ids.
 const notesFor = (inc) =>
@@ -132,8 +130,8 @@ async function main() {
     dataDir: env('ACTUAL_DATA_DIR', false, './.actual-cache'),
   };
   cfg.acctDefault = env('ACTUAL_ACCT_DEFAULT', false, cfg.acctBancolombia);
-  cfg.courtesyClients = new Set(
-    env('COURTESY_CLIENTS', false, '').split(';').map(normName).filter(Boolean),
+  cfg.courtesyPhones = new Set(
+    env('COURTESY_PHONES', false, '').split(/[;,]/).map(normPhone).filter(Boolean),
   );
   cfg.unnamedGraceDays = Number(env('UNNAMED_GRACE_DAYS', false, '3'));
 
@@ -150,11 +148,15 @@ async function main() {
   const unsynced = await fetchIncomes({ incomesUrl, secret: cfg.ingestSecret, since: cfg.since });
   console.log(`[actual-sync] ${unsynced.length} unsynced income(s) since ${cfg.since}`);
 
+  // A Strapi that predates client_phone would let every courtesy sale through as income.
+  if (cfg.courtesyPhones.size > 0 && unsynced.some((i) => !('client_phone' in i))) {
+    throw new Error('COURTESY_PHONES is set but Strapi sends no client_phone: redeploy Strapi first');
+  }
   // Split off the courtesy sales, and hold back the ones that can't be told apart yet.
-  const isCourtesy = (inc) => cfg.courtesyClients.has(normName(inc.client_name));
+  const isCourtesy = (inc) => cfg.courtesyPhones.has(inc.client_phone);
   const nameDue = daysBefore(bogotaToday(), cfg.unnamedGraceDays);
   const waitsForName = (inc) =>
-    cfg.courtesyClients.size > 0 && !inc.client_name && inc.paid_at > nameDue;
+    cfg.courtesyPhones.size > 0 && !inc.client_name && inc.paid_at > nameDue;
   const courtesy = unsynced.filter(isCourtesy);
   const held = unsynced.filter((i) => !isCourtesy(i) && waitsForName(i));
   const incomes = unsynced.filter((i) => !isCourtesy(i) && !waitsForName(i));
