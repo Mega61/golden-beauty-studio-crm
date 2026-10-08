@@ -29,8 +29,7 @@
       "inversedBy": "items"
     },
     "order": {
-      "type": "integer",
-      "default": 0
+      "type": "integer"
     }
   }
 }
