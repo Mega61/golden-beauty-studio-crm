@@ -722,7 +722,7 @@ export interface ApiLookbookItemLookbookItem
 export interface ApiPaymentPayment extends Struct.CollectionTypeSchema {
   collectionName: 'payments';
   info: {
-    description: 'A money-in event from the AgendaPro transactions report. Idempotency key = tx_id. Feeds the Actual Budget sync.';
+    description: 'A money-in event from the AgendaPro transactions report. Idempotency key = tx_id. client_name/service_name come from the sales report (joined on sale_id). Feeds the Actual Budget sync.';
     displayName: 'Payment';
     pluralName: 'payments';
     singularName: 'payment';
@@ -733,6 +733,7 @@ export interface ApiPaymentPayment extends Struct.CollectionTypeSchema {
   attributes: {
     actual_txn_id: Schema.Attribute.String;
     amount: Schema.Attribute.Integer & Schema.Attribute.Required;
+    client_name: Schema.Attribute.String;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -750,6 +751,7 @@ export interface ApiPaymentPayment extends Struct.CollectionTypeSchema {
     payment_status: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     sale_id: Schema.Attribute.String;
+    service_name: Schema.Attribute.String;
     synced_to_actual: Schema.Attribute.Boolean &
       Schema.Attribute.DefaultTo<false>;
     tip: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;

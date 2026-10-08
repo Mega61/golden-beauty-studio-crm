@@ -2,8 +2,8 @@
  * AgendaPro -> Strapi daily pull orchestrator (GitHub Actions cron).
  *
  * Flow: load cached session -> Playwright (login + email-2FA only if expired) ->
- * acquire both reports (reservations for CRM, transactions for finance) -> download each
- * S3 xlsx -> POST to the matching Strapi intake. The session (cookies) is persisted to
+ * acquire the reports (reservations for CRM; transactions + sales for finance) ->
+ * download each S3 xlsx -> POST to the matching Strapi intake. The session (cookies) is persisted to
  * SESSION_FILE so the browser/2FA only fires on expiry. The Actual Budget push runs as a
  * separate job (automation/actual-sync) off the Payment rows this creates.
  *
@@ -53,6 +53,12 @@ async function main() {
       false,
       env('INGEST_URL').replace(/agendapro-report\b.*$/, 'agendapro-transactions'),
     ),
+    // Sales intake (client + service of each sale), sibling route as above.
+    ingestSalesUrl: env(
+      'INGEST_SALES_URL',
+      false,
+      env('INGEST_URL').replace(/agendapro-report\b.*$/, 'agendapro-sales'),
+    ),
     ingestSecret: env('INGEST_SHARED_SECRET'),
     windowDays: Number(env('WINDOW_DAYS', false, '35')),
     windowForwardDays: Number(env('WINDOW_FORWARD_DAYS', false, '30')),
@@ -65,7 +71,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   console.log(
     `[pull] start ${startedAt} (reservas -${cfg.windowDays}d..+${cfg.windowForwardDays}d, ` +
-      `transacciones -${cfg.financeWindowDays}d)`,
+      `transacciones/ventas -${cfg.financeWindowDays}d)`,
   );
 
   const getOtp = (sinceEpochMs) =>
@@ -76,7 +82,7 @@ async function main() {
       sinceEpochMs,
     });
 
-  const { s3Url, reportWindow, transactionsUrl, storageState } = await acquireReportUrl({
+  const { s3Url, reportWindow, transactionsUrl, salesUrl, storageState } = await acquireReportUrl({
     email: cfg.email,
     password: cfg.password,
     getOtp,
@@ -115,6 +121,25 @@ async function main() {
     filename: `transacciones_${day}.xlsx`,
   });
   console.log('[pull] transacciones intake result:', JSON.stringify(txResult));
+
+  // 3. Sales report -> client/service names on those payments. After step 2: it labels
+  //    the payments that step created, joined on sale_id. Only labels, so it warns
+  //    instead of failing: the Actual sync (which needs this job green) must still run.
+  try {
+    if (!salesUrl) throw new Error('no sales report URL');
+    console.log('[pull] sales report ready, downloading…');
+    const salesBuffer = await downloadReport(salesUrl);
+    console.log(`[pull] ventas ${salesBuffer.length} bytes, uploading to Strapi…`);
+    const salesResult = await uploadToStrapi({
+      url: cfg.ingestSalesUrl,
+      secret: cfg.ingestSecret,
+      buffer: salesBuffer,
+      filename: `ventas_${day}.xlsx`,
+    });
+    console.log('[pull] ventas intake result:', JSON.stringify(salesResult));
+  } catch (err) {
+    console.warn('[pull] WARN sales labels skipped:', err?.message);
+  }
 
   console.log(`[pull] OK ${new Date().toISOString()}`);
 }

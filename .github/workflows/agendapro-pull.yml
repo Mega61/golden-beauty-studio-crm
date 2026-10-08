@@ -8,7 +8,13 @@ on:
     # headroom so a small delay still lands it around 7pm. GitHub gives no exact-time
     # guarantee for scheduled runs — if 7pm must be precise, trigger via the server.
     - cron: '50 23 * * *'
-  workflow_dispatch: {} # manual trigger for testing
+  workflow_dispatch: # manual trigger for testing
+    inputs:
+      finance_window_days:
+        description: >-
+          Days back for the transactions/sales reports. Leave empty for the usual window;
+          set it wide (e.g. 95) once to label every sale since ACTUAL_SYNC_SINCE.
+        required: false
 
 concurrency:
   group: agendapro-pull
@@ -53,10 +59,11 @@ jobs:
           OTP_SENDER: ${{ vars.OTP_SENDER }}
           INGEST_URL: ${{ vars.INGEST_URL }}
           INGEST_TRANSACTIONS_URL: ${{ vars.INGEST_TRANSACTIONS_URL }}
+          INGEST_SALES_URL: ${{ vars.INGEST_SALES_URL }}
           INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
           WINDOW_DAYS: ${{ vars.WINDOW_DAYS }}
           WINDOW_FORWARD_DAYS: ${{ vars.WINDOW_FORWARD_DAYS }}
-          FINANCE_WINDOW_DAYS: ${{ vars.FINANCE_WINDOW_DAYS }}
+          FINANCE_WINDOW_DAYS: ${{ inputs.finance_window_days || vars.FINANCE_WINDOW_DAYS }}
           SESSION_FILE: .session/agendapro.json
 
       # Diagnostics: on failure, the job writes a screenshot + url + cookie-name dump

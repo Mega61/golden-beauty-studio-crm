@@ -23,6 +23,12 @@ export default {
       config: { auth: false },
     },
     {
+      method: 'POST',
+      path: '/ingest/agendapro-sales',
+      handler: 'ingest.agendaproSales',
+      config: { auth: false },
+    },
+    {
       method: 'GET',
       path: '/ingest/agendapro-incomes',
       handler: 'ingest.agendaproIncomes',

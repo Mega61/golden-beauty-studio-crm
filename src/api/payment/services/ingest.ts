@@ -6,6 +6,10 @@
  * The two reports are independent; this one carries the payment method (cash vs
  * transfer) that the reservations report lacks, which is what lets the sync route each
  * income to the right Actual account.
+ *
+ * The sales report (ingestSalesFile) then fills in client_name / service_name on the
+ * payments of each sale, joined on sale_id, so Actual shows who paid instead of a bare
+ * "Venta N".
  */
 import type { Core } from '@strapi/strapi';
 import { parseAgendaProDate, parseMoney } from '../../../winback/normalize';
@@ -13,6 +17,7 @@ import {
   parseAgendaProTxWorkbook,
   type AgendaProTxRawRow,
 } from '../../../winback/agendapro-transactions-xlsx';
+import { parseAgendaProSalesWorkbook } from '../../../winback/agendapro-sales-xlsx';
 
 const PAYMENT_UID = 'api::payment.payment';
 
@@ -33,11 +38,20 @@ export interface NormalizedPayment {
 export interface IncomeRow {
   tx_id: string;
   sale_id: string | null;
+  client_name: string | null;
+  service_name: string | null;
   paid_at: string;
   amount: number;
   tip: number;
   method: PaymentMethod;
   payment_status: string | null;
+  synced_to_actual: boolean;
+}
+
+export interface SalesIngestSummary {
+  received: number;
+  payments_enriched: number;
+  sales_without_payment: number;
 }
 
 export interface PaymentIngestSummary {
@@ -151,12 +165,51 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 
   /**
-   * Income rows not yet pushed to Actual, on/after `since` (YYYY-MM-DD). `since` is the
-   * cutover guard that keeps the sync from colliding with income entered by hand before
-   * automation was switched on. Ordered oldest-first for stable, replayable imports.
+   * Fill client_name / service_name on every payment of each sale in a sales workbook.
+   * Only writes when a value changed, so the nightly re-ingest is a no-op. A sale with no
+   * payment yet (paid later, or outside the transactions window) is just counted: its
+   * payment picks the names up on a later run whose sales window still covers it.
    */
-  async listUnsynced({ since }: { since?: string } = {}): Promise<IncomeRow[]> {
-    const filters: Record<string, unknown> = { synced_to_actual: { $eq: false } };
+  async ingestSalesFile(input: string | Buffer): Promise<SalesIngestSummary> {
+    const sales = parseAgendaProSalesWorkbook(input);
+    const summary: SalesIngestSummary = {
+      received: sales.length,
+      payments_enriched: 0,
+      sales_without_payment: 0,
+    };
+    for (const sale of sales) {
+      const payments = (await strapi.documents(PAYMENT_UID).findMany({
+        filters: { sale_id: sale.sale_id },
+      })) as any[];
+      if (payments.length === 0) {
+        summary.sales_without_payment++;
+        continue;
+      }
+      for (const p of payments) {
+        const client_name = sale.client_name ?? p.client_name ?? null;
+        const service_name = sale.service_name ?? p.service_name ?? null;
+        if (p.client_name === client_name && p.service_name === service_name) continue;
+        await strapi.documents(PAYMENT_UID).update({
+          documentId: p.documentId,
+          data: { client_name, service_name } as any,
+        });
+        summary.payments_enriched++;
+      }
+    }
+    return summary;
+  },
+
+  /**
+   * Income rows on/after `since` (YYYY-MM-DD), by default only those not yet pushed to
+   * Actual. `since` is the cutover guard that keeps the sync from colliding with income
+   * entered by hand before automation was switched on. `all` also returns the synced
+   * ones, so the sync can bring their Actual notes up to date. Ordered oldest-first for
+   * stable, replayable imports.
+   */
+  async listIncomes({ since, all = false }: { since?: string; all?: boolean } = {}): Promise<
+    IncomeRow[]
+  > {
+    const filters: Record<string, unknown> = all ? {} : { synced_to_actual: { $eq: false } };
     if (since) filters.paid_at = { $gte: since };
 
     // Paginate: the Document Service defaults to a 25-row page, so a larger backfill
@@ -177,11 +230,14 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     return rows.map((r) => ({
       tx_id: r.tx_id,
       sale_id: r.sale_id ?? null,
+      client_name: r.client_name ?? null,
+      service_name: r.service_name ?? null,
       paid_at: r.paid_at,
       amount: r.amount,
       tip: r.tip ?? 0,
       method: r.method as PaymentMethod,
       payment_status: r.payment_status ?? null,
+      synced_to_actual: Boolean(r.synced_to_actual),
     }));
   },
 

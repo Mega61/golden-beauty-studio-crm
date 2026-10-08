@@ -22,6 +22,10 @@ const API = 'https://agendapro.com/api/views/admin/v2/reports/files';
 // The transactions (money) report: a single POST returns the S3 URL directly — no job
 // polling, unlike booking_history. Payload takes full ISO datetimes in Bogota time.
 const TX_EXPORT_API = 'https://agendapro.com/api/views/admin/v2/sales/transaction/export';
+// The sales report ("Reporte de ventas"): same shape as the transactions export, plus
+// `async: false` (what the app sends) so the POST answers with the file directly. Its
+// Ventas/Ítems sheets carry the client and service of each sale.
+const SALES_EXPORT_API = 'https://agendapro.com/api/views/admin/v2/sales/sale/export';
 const DEBUG_DIR = 'debug';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -128,31 +132,45 @@ async function pullReportUrl(request, bearer, windowDays, windowForwardDays) {
   throw new Error('Report not ready within timeout (check poll)');
 }
 
-async function pullTransactionsUrl(request, bearer, financeWindowDays) {
-  const headers = { authorization: bearer, 'content-type': 'application/json', origin: APP, referer: `${APP}/` };
-  // Backward-only window (money already received). Full-day bounds in Bogota time.
+// Backward-only window (money already received). Full-day bounds in Bogota time.
+function financeWindow(financeWindowDays) {
   const now = new Date();
   const start = new Date(now.getTime() - financeWindowDays * 86_400_000);
-  const body = {
+  return {
     start_date: `${bogotaDate(start)}T00:00:00-05:00`,
     end_date: `${bogotaDate(now)}T23:59:59-05:00`,
     location_id: [],
   };
+}
 
-  const post = await request.post(TX_EXPORT_API, { headers, data: body });
-  if (!post.ok()) throw new Error(`transaction/export POST ${post.status()}: ${await post.text()}`);
-  const url = (await post.json()).url;
-  if (typeof url !== 'string' || !url) throw new Error('transaction/export returned no url');
+async function postForUrl(request, bearer, api, body, label) {
+  const headers = { authorization: bearer, 'content-type': 'application/json', origin: APP, referer: `${APP}/` };
+  const post = await request.post(api, { headers, data: body });
+  if (!post.ok()) throw new Error(`${label} POST ${post.status()}: ${await post.text()}`);
+  const j = await post.json();
+  // transaction/export answers { url }; tolerate the other shapes the app's exports use.
+  const url = j.url ?? j.file_uri ?? j.data?.url;
+  if (typeof url !== 'string' || !url) throw new Error(`${label} returned no url: ${JSON.stringify(j).slice(0, 300)}`);
   return url;
 }
 
+async function pullTransactionsUrl(request, bearer, financeWindowDays) {
+  return postForUrl(request, bearer, TX_EXPORT_API, financeWindow(financeWindowDays), 'transaction/export');
+}
+
+async function pullSalesUrl(request, bearer, financeWindowDays) {
+  const body = { ...financeWindow(financeWindowDays), async: false };
+  return postForUrl(request, bearer, SALES_EXPORT_API, body, 'sale/export');
+}
+
 /**
- * Acquire both AgendaPro reports in one authenticated session (login/2FA fires at most
- * once): the reservations report (booking_history, for CRM/winback) and the transactions
- * report (money ledger, for the Actual Budget sync). `financeWindowDays` bounds the
- * backward-only transactions window; when omitted it falls back to `windowDays`.
+ * Acquire the AgendaPro reports in one authenticated session (login/2FA fires at most
+ * once): the reservations report (booking_history, for CRM/winback), the transactions
+ * report (money ledger, for the Actual Budget sync) and the sales report (who paid and
+ * for what, to label those incomes). `financeWindowDays` bounds the backward-only
+ * transactions/sales window; when omitted it falls back to `windowDays`.
  *
- * @returns {Promise<{ s3Url: string, reportWindow: { start: string, end: string }, transactionsUrl: string, storageState: object }>}
+ * @returns {Promise<{ s3Url: string, reportWindow: { start: string, end: string }, transactionsUrl: string, salesUrl: string | null, storageState: object }>}
  */
 export async function acquireReportUrl({
   email,
@@ -227,8 +245,16 @@ export async function acquireReportUrl({
       bearer,
       financeWindowDays ?? windowDays,
     );
+    // Labels only: a failure here must not cost the reports above (and with them the
+    // Actual sync), so it degrades to "no names tonight".
+    let salesUrl = null;
+    try {
+      salesUrl = await pullSalesUrl(context.request, bearer, financeWindowDays ?? windowDays);
+    } catch (err) {
+      console.warn('[agendapro] WARN sales report not acquired:', err?.message);
+    }
     const newState = await context.storageState();
-    return { s3Url, reportWindow, transactionsUrl, storageState: newState };
+    return { s3Url, reportWindow, transactionsUrl, salesUrl, storageState: newState };
   } catch (err) {
     if (page && context) await dumpDebug(page, context, 'failure');
     throw err;
