@@ -18,6 +18,14 @@
  * refreshNotes); only notes still exactly as this job first wrote them are touched, so
  * anything typed by hand in Actual is left alone.
  *
+ * Courtesy sales — the owner's family, who are booked in AgendaPro only so the nail tech's
+ * commission counts — never reach Actual: no money came in. Their clients are listed in
+ * COURTESY_CLIENTS (";"-separated, matched ignoring case/accents/spacing). Each one is
+ * marked synced with actual_txn_id "courtesy", so it doesn't come back and Strapi shows
+ * it was left out on purpose. The name comes from the sales report, which can lag the
+ * payment, so while the list is set a payment with no client yet waits up to
+ * UNNAMED_GRACE_DAYS (default 3) for it before being synced as a normal sale.
+ *
  * Amounts are COP; Actual stores integer minor units (value * 100), positive = inflow.
  *
  * `--dry-run` (or DRY_RUN=1) fetches and prints the mapped transactions WITHOUT touching
@@ -41,6 +49,17 @@ function env(name, required = true, fallback = undefined) {
 // to the correct Bogota day.
 const bogotaToday = () => new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10);
 const fmtCOP = (minor) => `$${(minor / 100).toLocaleString('es-CO')}`;
+const daysBefore = (iso, days) =>
+  new Date(Date.parse(iso) - days * 86_400_000).toISOString().slice(0, 10);
+
+// How AgendaPro client names are compared: it often adds a trailing space or drops an accent.
+const normName = (s) =>
+  String(s ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 
 // The notes this job writes. Order matters to people reading them: who, what, then the ids.
 const notesFor = (inc) =>
@@ -113,6 +132,10 @@ async function main() {
     dataDir: env('ACTUAL_DATA_DIR', false, './.actual-cache'),
   };
   cfg.acctDefault = env('ACTUAL_ACCT_DEFAULT', false, cfg.acctBancolombia);
+  cfg.courtesyClients = new Set(
+    env('COURTESY_CLIENTS', false, '').split(';').map(normName).filter(Boolean),
+  );
+  cfg.unnamedGraceDays = Number(env('UNNAMED_GRACE_DAYS', false, '3'));
 
   // Derive the incomes + mark-synced routes from INGEST_URL unless overridden.
   const incomesUrl = env(
@@ -124,8 +147,29 @@ async function main() {
 
   console.log(`[actual-sync] start ${new Date().toISOString()} | since=${cfg.since} | dryRun=${DRY_RUN}`);
 
-  const incomes = await fetchIncomes({ incomesUrl, secret: cfg.ingestSecret, since: cfg.since });
-  console.log(`[actual-sync] ${incomes.length} unsynced income(s) since ${cfg.since}`);
+  const unsynced = await fetchIncomes({ incomesUrl, secret: cfg.ingestSecret, since: cfg.since });
+  console.log(`[actual-sync] ${unsynced.length} unsynced income(s) since ${cfg.since}`);
+
+  // Split off the courtesy sales, and hold back the ones that can't be told apart yet.
+  const isCourtesy = (inc) => cfg.courtesyClients.has(normName(inc.client_name));
+  const nameDue = daysBefore(bogotaToday(), cfg.unnamedGraceDays);
+  const waitsForName = (inc) =>
+    cfg.courtesyClients.size > 0 && !inc.client_name && inc.paid_at > nameDue;
+  const courtesy = unsynced.filter(isCourtesy);
+  const held = unsynced.filter((i) => !isCourtesy(i) && waitsForName(i));
+  const incomes = unsynced.filter((i) => !isCourtesy(i) && !waitsForName(i));
+  for (const inc of courtesy) {
+    console.log(
+      `[actual-sync] courtesy, not written: tx ${inc.tx_id} ${inc.paid_at} ` +
+        `${fmtCOP(Number(inc.amount) * 100)} (${notesFor(inc)})`,
+    );
+  }
+  if (held.length) {
+    console.log(
+      `[actual-sync] ${held.length} income(s) wait for their client name ` +
+        `(up to ${cfg.unnamedGraceDays} days): ${held.map((i) => i.tx_id).join(', ')}`,
+    );
+  }
   // Every income since the cutover, synced or not: the ones whose names arrived late get
   // their Actual notes refreshed below.
   const named = (
@@ -169,8 +213,18 @@ async function main() {
       }
     }
     console.log(`\n  ${named.length} income(s) since ${cfg.since} have a client/service name to label with.`);
+    console.log(`  ${courtesy.length} courtesy income(s) would be marked synced without writing.`);
     console.log('\n[actual-sync] DRY RUN — nothing written to Actual, nothing marked synced.');
     return;
+  }
+  // Courtesy sales are settled in Strapi alone, before (and whether or not) Actual is touched.
+  if (courtesy.length) {
+    const res = await markSynced({
+      markUrl,
+      secret: cfg.ingestSecret,
+      synced: courtesy.map((i) => ({ tx_id: i.tx_id, actual_txn_id: 'courtesy' })),
+    });
+    console.log(`[actual-sync] marked ${res.marked} courtesy payment(s) as left out`);
   }
   if (incomes.length === 0 && named.length === 0) {
     console.log('[actual-sync] nothing to sync, done.');
