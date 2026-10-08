@@ -47,6 +47,26 @@ column *other than* `Método de Pago`, so this is the only routing signal.
   so the automation never double-counts income you had already entered by hand. Set it once
   to the day you switch automation on, then leave it.
 
+## Courtesy sales
+
+The owner's family get their nails done for free. The sale is still registered in
+AgendaPro — that is what the nail tech's commission is computed from — but no money comes
+in, so it must not become income in Actual. Clients whose phone is in `COURTESY_PHONES`
+are never written. The sales report has no phone, so Strapi looks it up from the client's
+name in the CRM (`client_phone` on each income; a name two clients share gets none). Their
+payments are marked synced with `actual_txn_id = "courtesy"`, which is how Strapi tells
+them apart from real syncs. If the list is set but Strapi doesn't send `client_phone` yet
+(not redeployed), the job fails instead of writing those sales as income. Because they never reach Actual, they also never show up in the finanzas bot's
+list of sales a transfer can be linked to.
+
+The client name arrives with the sales report, after the transactions report. While the
+list is set, a payment with no name yet is held for up to `UNNAMED_GRACE_DAYS` so a
+courtesy sale isn't written before it can be recognised; after that it syncs as a normal
+sale (so a broken sales report delays income, but never loses it).
+
+The job never deletes from Actual: courtesy sales written before the list existed are
+cleaned up by hand.
+
 ## Run
 
 ```bash
@@ -72,6 +92,8 @@ npm run sync
 | `ACTUAL_ACCT_DEFAULT`      | var    | Optional; account for unknown methods (default: Bancolombia) |
 | `ACTUAL_CATEGORY_SERVICIOS`| var    | Income category id (Ingresos → Servicios)                    |
 | `ACTUAL_SYNC_SINCE`        | var    | Optional cutover `YYYY-MM-DD` (default: today)               |
+| `COURTESY_PHONES`          | var    | Optional; `;`-separated phones of clients whose sales are never paid (family). See below |
+| `UNNAMED_GRACE_DAYS`       | var    | Optional; days a payment with no client name yet waits for it while `COURTESY_PHONES` is set (default 3) |
 | `INGEST_URL`               | var    | Reused from agendapro-pull; incomes/mark-synced routes derived from it |
 | `INGEST_SHARED_SECRET`     | secret | Reused from agendapro-pull                                   |
 

@@ -12,7 +12,7 @@
  * "Venta N".
  */
 import type { Core } from '@strapi/strapi';
-import { parseAgendaProDate, parseMoney } from '../../../winback/normalize';
+import { normalizeName, parseAgendaProDate, parseMoney } from '../../../winback/normalize';
 import {
   parseAgendaProTxWorkbook,
   type AgendaProTxRawRow,
@@ -20,6 +20,7 @@ import {
 import { parseAgendaProSalesWorkbook } from '../../../winback/agendapro-sales-xlsx';
 
 const PAYMENT_UID = 'api::payment.payment';
+const CLIENT_UID = 'api::client.client';
 
 export type PaymentMethod = 'efectivo' | 'transferencia' | 'otro';
 
@@ -39,6 +40,8 @@ export interface IncomeRow {
   tx_id: string;
   sale_id: string | null;
   client_name: string | null;
+  /** The client's phone, looked up by name in the CRM (null when unknown or ambiguous). */
+  client_phone: string | null;
   service_name: string | null;
   paid_at: string;
   amount: number;
@@ -200,6 +203,34 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 
   /**
+   * Client phone by normalized full name. The sales report names the client but has no
+   * phone; the reservations report gives both, and AgendaPro writes the same "Nombre
+   * Apellido" in each, so the name bridges a payment to its client. A name two clients
+   * share maps to nothing rather than to a guess.
+   */
+  async phonesByName(): Promise<Map<string, string>> {
+    const PAGE = 200;
+    const phones = new Map<string, Set<string>>();
+    for (let start = 0; ; start += PAGE) {
+      const page = (await strapi.documents(CLIENT_UID).findMany({
+        fields: ['full_name', 'phone'] as any,
+        start,
+        limit: PAGE,
+      })) as any[];
+      for (const c of page) {
+        const key = normalizeName(c.full_name);
+        if (!key || !c.phone) continue;
+        if (!phones.has(key)) phones.set(key, new Set());
+        phones.get(key)!.add(c.phone);
+      }
+      if (page.length < PAGE) break;
+    }
+    const unique = new Map<string, string>();
+    for (const [name, set] of phones) if (set.size === 1) unique.set(name, [...set][0]);
+    return unique;
+  },
+
+  /**
    * Income rows on/after `since` (YYYY-MM-DD), by default only those not yet pushed to
    * Actual. `since` is the cutover guard that keeps the sync from colliding with income
    * entered by hand before automation was switched on. `all` also returns the synced
@@ -227,10 +258,12 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       if (page.length < PAGE) break;
     }
 
+    const phoneOf = await this.phonesByName();
     return rows.map((r) => ({
       tx_id: r.tx_id,
       sale_id: r.sale_id ?? null,
       client_name: r.client_name ?? null,
+      client_phone: r.client_name ? (phoneOf.get(normalizeName(r.client_name)) ?? null) : null,
       service_name: r.service_name ?? null,
       paid_at: r.paid_at,
       amount: r.amount,
