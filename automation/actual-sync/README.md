@@ -10,8 +10,14 @@ ledger) and POSTs it to Strapi, which upserts one `Payment` row per transaction 
 
 1. `GET /api/ingest/agendapro-incomes?since=<cutover>` — payments not yet synced;
 2. maps each to an Actual **inflow** transaction;
-3. `importTransactions` into Actual;
-4. `POST /api/ingest/agendapro-incomes/mark-synced` — flags them synced.
+3. `addTransactions` into Actual (skipping `imported_id`s already there);
+4. relabels already-synced incomes whose client/service arrived later
+   (`?all=1`; only notes still in the bare `Venta N · <method>` form are touched);
+5. `POST /api/ingest/agendapro-incomes/mark-synced` — flags them synced.
+
+The client and service come from AgendaPro's **sales report**, which the pull job
+ingests after the transactions report (`POST /api/ingest/agendapro-sales`, joined on
+`sale_id`).
 
 ```
 transactions.xlsx → Strapi Payment rows → [this job] → Actual Budget
@@ -27,7 +33,7 @@ transactions.xlsx → Strapi Payment rows → [this job] → Actual Budget
 | `imported_id` | `agendapro-tx:<tx_id>` (dedup key)       |
 | `category`    | `ACTUAL_CATEGORY_SERVICIOS` (Ingresos → Servicios) |
 | `payee`       | `AgendaPro`                              |
-| `notes`       | `Venta <ID Venta> · <method>`            |
+| `notes`       | `<Cliente> · <Nombre item> · Venta <ID Venta> · <method>` (names omitted until the sales report has them) |
 
 **Account routing:** `efectivo → ACTUAL_ACCT_EFECTIVO`, `transferencia →
 ACTUAL_ACCT_BANCOLOMBIA`, anything else (`otro`) → `ACTUAL_ACCT_DEFAULT` (falls back to the

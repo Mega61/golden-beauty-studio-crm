@@ -12,6 +12,12 @@
  *   method 'otro'          -> ACTUAL_ACCT_DEFAULT (defaults to the Bancolombia account)
  * All rows land in the ACTUAL_CATEGORY_SERVICIOS income category.
  *
+ * Notes say who paid and for what — "Monica Jaramillo · Tradicional pies · Venta 1129 ·
+ * transferencia" — from the client/service the sales report put on each payment. A
+ * payment whose names arrive after it was synced is relabelled on a later run (see
+ * refreshNotes); only notes still exactly as this job first wrote them are touched, so
+ * anything typed by hand in Actual is left alone.
+ *
  * Amounts are COP; Actual stores integer minor units (value * 100), positive = inflow.
  *
  * `--dry-run` (or DRY_RUN=1) fetches and prints the mapped transactions WITHOUT touching
@@ -36,9 +42,18 @@ function env(name, required = true, fallback = undefined) {
 const bogotaToday = () => new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10);
 const fmtCOP = (minor) => `$${(minor / 100).toLocaleString('es-CO')}`;
 
-async function fetchIncomes({ incomesUrl, secret, since }) {
+// The notes this job writes. Order matters to people reading them: who, what, then the ids.
+const notesFor = (inc) =>
+  [inc.client_name, inc.service_name, inc.sale_id ? `Venta ${inc.sale_id}` : null, inc.method]
+    .filter(Boolean)
+    .join(' · ');
+// What the notes looked like before the names existed — the only text refreshNotes replaces.
+const bareNotesFor = (inc) => notesFor({ ...inc, client_name: null, service_name: null });
+
+async function fetchIncomes({ incomesUrl, secret, since, all = false }) {
   const url = new URL(incomesUrl);
   if (since) url.searchParams.set('since', since);
+  if (all) url.searchParams.set('all', '1');
   const res = await fetch(url, { headers: { 'x-ingest-secret': secret } });
   const text = await res.text();
   if (!res.ok) throw new Error(`incomes GET ${res.status}: ${text}`);
@@ -56,6 +71,29 @@ async function markSynced({ markUrl, secret, synced }) {
   const text = await res.text();
   if (!res.ok) throw new Error(`mark-synced POST ${res.status}: ${text}`);
   return JSON.parse(text);
+}
+
+/**
+ * Bring the notes of already-synced incomes up to date with their client/service names.
+ * Looks in every account (a sale may have been moved by hand, e.g. a cash sale AgendaPro
+ * mislabelled as a transfer) and only rewrites notes that are still exactly what this
+ * job wrote before the names were known, so manual edits in Actual survive.
+ */
+async function refreshNotes(api, named, since, endDate) {
+  if (named.length === 0) return;
+  const byImportedId = new Map(named.map((i) => [`agendapro-tx:${i.tx_id}`, i]));
+  let updated = 0;
+  for (const acct of await api.getAccounts()) {
+    for (const t of await api.getTransactions(acct.id, since, endDate)) {
+      const inc = byImportedId.get(t.imported_id);
+      if (!inc) continue;
+      const want = notesFor(inc);
+      if (t.notes === want || (t.notes ?? '') !== bareNotesFor(inc)) continue;
+      await api.updateTransaction(t.id, { notes: want });
+      updated++;
+    }
+  }
+  console.log(`[actual-sync] notes: ${updated} income(s) relabelled with client/service`);
 }
 
 async function main() {
@@ -88,10 +126,11 @@ async function main() {
 
   const incomes = await fetchIncomes({ incomesUrl, secret: cfg.ingestSecret, since: cfg.since });
   console.log(`[actual-sync] ${incomes.length} unsynced income(s) since ${cfg.since}`);
-  if (incomes.length === 0) {
-    console.log('[actual-sync] nothing to sync, done.');
-    return;
-  }
+  // Every income since the cutover, synced or not: the ones whose names arrived late get
+  // their Actual notes refreshed below.
+  const named = (
+    await fetchIncomes({ incomesUrl, secret: cfg.ingestSecret, since: cfg.since, all: true })
+  ).filter((i) => i.client_name || i.service_name);
 
   const acctFor = (method) =>
     method === 'efectivo' ? cfg.acctEfectivo
@@ -111,7 +150,7 @@ async function main() {
       payee_name: 'AgendaPro',
       imported_id: `agendapro-tx:${inc.tx_id}`,
       category: cfg.categoryServicios,
-      notes: [inc.sale_id ? `Venta ${inc.sale_id}` : null, inc.method].filter(Boolean).join(' · '),
+      notes: notesFor(inc),
       cleared: true,
     };
     if (!byAccount.has(acct)) byAccount.set(acct, []);
@@ -129,7 +168,12 @@ async function main() {
         console.log(`    ${t.date}  ${fmtCOP(t.amount).padStart(12)}  ${t.imported_id}  (${t.notes})`);
       }
     }
+    console.log(`\n  ${named.length} income(s) since ${cfg.since} have a client/service name to label with.`);
     console.log('\n[actual-sync] DRY RUN — nothing written to Actual, nothing marked synced.');
+    return;
+  }
+  if (incomes.length === 0 && named.length === 0) {
+    console.log('[actual-sync] nothing to sync, done.');
     return;
   }
 
@@ -165,14 +209,22 @@ async function main() {
         console.log(`[actual-sync] account ${acct}: nothing new (${skipped} already present)`);
         continue;
       }
-      const added = await api.addTransactions(acct, fresh);
+      // addTransactions resolves to the string 'ok', not the new ids — count what we sent.
+      await api.addTransactions(acct, fresh);
       console.log(
-        `[actual-sync] account ${acct}: +${added.length} added` +
+        `[actual-sync] account ${acct}: +${fresh.length} added` +
           (skipped ? `, ${skipped} skipped (already present)` : ''),
       );
     }
+
+    await refreshNotes(api, named, cfg.since, endDate);
   } finally {
     await api.shutdown();
+  }
+
+  if (incomes.length === 0) {
+    console.log(`[actual-sync] OK ${new Date().toISOString()}`);
+    return;
   }
 
   // Flag every fetched payment synced. Safe even if this fails: the imported_id dedup

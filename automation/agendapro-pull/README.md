@@ -2,8 +2,9 @@
 
 Acquisition job for Priority 2. Runs on **GitHub Actions cron** (06:00 America/Bogota),
 logs into AgendaPro only when the cached session has expired, and — in one authenticated
-session — pulls **two** reports: the reservations report (CRM/winback) and the
-transactions report (money ledger, for finance). Strapi does all parsing/upsert.
+session — pulls **three** reports: the reservations report (CRM/winback), the
+transactions report (money ledger, for finance) and the sales report (client + service of
+each sale, to label that money). Strapi does all parsing/upsert.
 
 ```
 load cached session
@@ -16,10 +17,16 @@ load cached session
   → POST .../sales/transaction/export         { start_date, end_date, location_id:[] }
       (FINANCE_WINDOW_DAYS back … today, Bogota time; returns the S3 URL directly — no
        job polling. This report carries Método de Pago, unlike booking_history.)
+  → POST .../sales/sale/export                { start_date, end_date, async:false, location_id:[] }
+      (same window; its Ventas/Ítems sheets name the client and service of each sale)
   → download each S3 xlsx
   → POST reservations to {INGEST_URL}              (visits + recompute + Stampee)
   → POST transactions to {INGEST_TRANSACTIONS_URL} (payments; feeds the Actual sync)
+  → POST sales to {INGEST_SALES_URL}               (client/service onto those payments)
 ```
+
+To label every sale since the Actual cutover once, run the workflow by hand with
+`finance_window_days` set wide (e.g. 95); the next actual-sync relabels the old incomes.
 
 The **Actual Budget** push runs as a separate job off the payment rows this creates — see
 `automation/actual-sync`.

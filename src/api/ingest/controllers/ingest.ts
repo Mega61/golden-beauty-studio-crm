@@ -121,14 +121,39 @@ export default {
   },
 
   /**
+   * AgendaPro *sales* report intake ("Reporte de ventas"). Multipart xlsx, field
+   * "report". Fills client_name / service_name on the payments of each sale (joined on
+   * sale_id), so it must run after the transactions intake. A report with sales but no
+   * matching payment is fine (a sale paid later), so there is no zero-rows 422 here.
+   */
+  async agendaproSales(ctx: any) {
+    if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
+
+    const files = (ctx.request.files ?? {}) as Record<string, any>;
+    const file = files.report ?? Object.values(files)[0];
+    const filepath = file?.filepath ?? file?.path;
+    if (!filepath) return ctx.badRequest('Missing xlsx file (multipart field "report").');
+
+    try {
+      const summary = await strapi.service('api::payment.ingest').ingestSalesFile(filepath);
+      ctx.body = { ok: true, summary };
+    } catch (err: any) {
+      strapi.log.error(`[ingest] sales parse/ingest failed: ${err?.message}`);
+      return ctx.badRequest(`Sales report could not be parsed: ${err?.message}`);
+    }
+  },
+
+  /**
    * Read endpoint that drives the Actual Budget sync: payments not yet pushed to Actual,
-   * on/after `?since=YYYY-MM-DD` (the cutover guard). Returns income rows with the payment
+   * on/after `?since=YYYY-MM-DD` (the cutover guard). With `?all=1` it also returns the
+   * ones already synced (to refresh their notes). Income rows come with the payment
    * method already resolved so the sync can route each to the right account.
    */
   async agendaproIncomes(ctx: any) {
     if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
     const since = typeof ctx.query?.since === 'string' ? ctx.query.since : undefined;
-    const incomes = await strapi.service('api::payment.ingest').listUnsynced({ since });
+    const all = ctx.query?.all === '1' || ctx.query?.all === 'true';
+    const incomes = await strapi.service('api::payment.ingest').listIncomes({ since, all });
     ctx.body = { ok: true, count: incomes.length, incomes };
   },
 
