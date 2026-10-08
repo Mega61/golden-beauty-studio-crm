@@ -103,6 +103,17 @@ async function createItem({ caption, order, categoryDocumentId, photoId }) {
   });
 }
 
+// `order` is one global sequence across every category (the landing sorts the
+// whole lookbook by it), spaced by ORDER_STEP so the owner can slot a photo in
+// between two others from the admin without renumbering. New imports continue
+// after the highest existing value.
+const ORDER_STEP = 10;
+
+async function maxOrder() {
+  const json = await api('/api/lookbook-items?fields[0]=order&sort[0]=order:desc&pagination[pageSize]=1');
+  return json.data?.[0]?.order ?? 0;
+}
+
 async function listCategoryFolders() {
   const entries = await fs.readdir(SRC_ROOT, { withFileTypes: true });
   return entries
@@ -125,6 +136,7 @@ async function main() {
   let created = 0;
   let skipped = 0;
   let missingCat = 0;
+  let order = (await maxOrder()) + ORDER_STEP;
 
   for (const slug of cats) {
     const category = await findCategory(slug);
@@ -139,7 +151,6 @@ async function main() {
       .map((e) => e.name)
       .sort();
 
-    let order = 0;
     for (const name of files) {
       const ext = path.extname(name).toLowerCase();
       const base = path.basename(name, ext);
@@ -152,7 +163,7 @@ async function main() {
       if (DRY) {
         console.log(`  would import [${slug}] ${caption}`);
         created++;
-        order++;
+        order += ORDER_STEP;
         continue;
       }
       const file = path.join(dir, name);
@@ -165,7 +176,7 @@ async function main() {
       });
       console.log(`  ✓ [${slug}] ${caption}`);
       created++;
-      order++;
+      order += ORDER_STEP;
     }
   }
 

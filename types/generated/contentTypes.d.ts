@@ -710,7 +710,7 @@ export interface ApiLookbookItemLookbookItem
       'api::lookbook-item.lookbook-item'
     > &
       Schema.Attribute.Private;
-    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    order: Schema.Attribute.Integer;
     photo: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
