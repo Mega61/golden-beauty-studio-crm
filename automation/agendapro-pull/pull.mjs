@@ -74,6 +74,7 @@ async function main() {
     // With the export, skip every Strapi upload: a one-off pull for the cutover must
     // not change what the nightly sync owns.
     exportOnly: env('EXPORT_ONLY', false, '') === 'true',
+    exportFinanceMonths: Number(env('EXPORT_FINANCE_MONTHS', false, '7')),
   };
 
   const startedAt = new Date().toISOString();
@@ -90,7 +91,7 @@ async function main() {
       sinceEpochMs,
     });
 
-  const { s3Url, reportWindow, transactionsUrl, salesUrl, storageState } = await acquireReportUrl({
+  const { s3Url, reportWindow, transactionsUrl, salesUrl, financeChunks, storageState } = await acquireReportUrl({
     email: cfg.email,
     password: cfg.password,
     getOtp,
@@ -98,6 +99,7 @@ async function main() {
     windowDays: cfg.windowDays,
     windowForwardDays: cfg.windowForwardDays,
     financeWindowDays: cfg.financeWindowDays,
+    financeMonths: cfg.exportOnly && cfg.exportPubKey ? cfg.exportFinanceMonths : 0,
   });
   saveSession(cfg.sessionFile, storageState); // persist refreshed cookies
   const day = startedAt.slice(0, 10);
@@ -119,12 +121,13 @@ async function main() {
     // cifrado; nada se sube a Strapi.
     if (cfg.exportPubKey) {
       const pem = Buffer.from(cfg.exportPubKey, 'base64').toString('utf8');
-      for (const [name, url] of [['transacciones', transactionsUrl], ['ventas', salesUrl]]) {
-        if (!url) { console.warn(`[pull] export: sin URL de ${name}`); continue; }
-        const buf = await downloadReport(url);
-        const file = path.join('export', `${name}_${day}.xlsx.enc`);
-        fs.writeFileSync(file, encryptForRecipient(buf, pem));
-        console.log(`[pull] export cifrado: ${file} (${buf.length} bytes en claro)`);
+      for (const c of financeChunks ?? []) {
+        for (const [name, url] of [['transacciones', c.tx], ['ventas', c.sales]]) {
+          const buf = await downloadReport(url);
+          const file = path.join('export', `${name}_${c.start}_${c.end}.xlsx.enc`);
+          fs.writeFileSync(file, encryptForRecipient(buf, pem));
+          console.log(`[pull] export cifrado: ${file} (${buf.length} bytes en claro)`);
+        }
       }
     }
     console.log('[pull] EXPORT_ONLY: sin subir nada a Strapi.');

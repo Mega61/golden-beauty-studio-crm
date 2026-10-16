@@ -154,6 +154,26 @@ async function postForUrl(request, bearer, api, body, label) {
   return url;
 }
 
+/**
+ * AgendaPro's money exports cover ~one month per request: ask for 200 days and it
+ * silently answers with the first month of that range. So a long history comes in
+ * consecutive 30-day chunks, newest first, each with explicit bounds.
+ */
+function financeChunks(months) {
+  const now = new Date();
+  const out = [];
+  for (let k = 0; k < months; k += 1) {
+    const end = new Date(now.getTime() - k * 30 * 86_400_000);
+    const start = new Date(end.getTime() - 29 * 86_400_000);
+    out.push({
+      start_date: `${bogotaDate(start)}T00:00:00-05:00`,
+      end_date: `${bogotaDate(end)}T23:59:59-05:00`,
+      location_id: [],
+    });
+  }
+  return out;
+}
+
 async function pullTransactionsUrl(request, bearer, financeWindowDays) {
   return postForUrl(request, bearer, TX_EXPORT_API, financeWindow(financeWindowDays), 'transaction/export');
 }
@@ -180,6 +200,8 @@ export async function acquireReportUrl({
   windowDays,
   windowForwardDays,
   financeWindowDays,
+  // Export-only: how many 30-day chunks of the money reports to fetch (0 = none).
+  financeMonths = 0,
 }) {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   let context;
@@ -253,8 +275,17 @@ export async function acquireReportUrl({
     } catch (err) {
       console.warn('[agendapro] WARN sales report not acquired:', err?.message);
     }
+    const chunks = [];
+    for (const window of financeChunks(financeMonths)) {
+      const tx = await postForUrl(context.request, bearer, TX_EXPORT_API, window, 'transaction/export');
+      const sales = await postForUrl(
+        context.request, bearer, SALES_EXPORT_API, { ...window, async: false }, 'sale/export',
+      );
+      chunks.push({ start: window.start_date.slice(0, 10), end: window.end_date.slice(0, 10), tx, sales });
+      console.log(`[agendapro] finanzas ${window.start_date.slice(0, 10)} → ${window.end_date.slice(0, 10)} listas`);
+    }
     const newState = await context.storageState();
-    return { s3Url, reportWindow, transactionsUrl, salesUrl, storageState: newState };
+    return { s3Url, reportWindow, transactionsUrl, salesUrl, financeChunks: chunks, storageState: newState };
   } catch (err) {
     if (page && context) await dumpDebug(page, context, 'failure');
     throw err;
