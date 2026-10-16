@@ -114,6 +114,19 @@ async function main() {
     console.log(`[pull] export cifrado: ${file} (${buffer.length} bytes en claro)`);
   }
   if (cfg.exportOnly) {
+    // Los otros dos reportes de la misma sesión: el de transacciones (método de
+    // pago, propina) y el de ventas (cliente y servicio de cada venta). Mismo
+    // cifrado; nada se sube a Strapi.
+    if (cfg.exportPubKey) {
+      const pem = Buffer.from(cfg.exportPubKey, 'base64').toString('utf8');
+      for (const [name, url] of [['transacciones', transactionsUrl], ['ventas', salesUrl]]) {
+        if (!url) { console.warn(`[pull] export: sin URL de ${name}`); continue; }
+        const buf = await downloadReport(url);
+        const file = path.join('export', `${name}_${day}.xlsx.enc`);
+        fs.writeFileSync(file, encryptForRecipient(buf, pem));
+        console.log(`[pull] export cifrado: ${file} (${buf.length} bytes en claro)`);
+      }
+    }
     console.log('[pull] EXPORT_ONLY: sin subir nada a Strapi.');
     return;
   }
