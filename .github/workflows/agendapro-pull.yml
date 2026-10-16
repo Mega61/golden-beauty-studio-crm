@@ -15,6 +15,18 @@ on:
           Days back for the transactions/sales reports. Leave empty for the usual window;
           set it wide (e.g. 95) once to label every sale since ACTUAL_SYNC_SINCE.
         required: false
+      export_pubkey:
+        description: >-
+          One-off export (cutover): base64 of a PEM RSA public key. The reservations
+          report is uploaded ENCRYPTED as a 1-day artifact. Public repo: never plain.
+        required: false
+      export_only:
+        description: "true = only the encrypted export; nothing is sent to Strapi or Actual."
+        required: false
+        default: "false"
+      window_days:
+        description: Days back for the reservations report (export runs want the whole history).
+        required: false
 
 concurrency:
   group: agendapro-pull
@@ -61,10 +73,23 @@ jobs:
           INGEST_TRANSACTIONS_URL: ${{ vars.INGEST_TRANSACTIONS_URL }}
           INGEST_SALES_URL: ${{ vars.INGEST_SALES_URL }}
           INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
-          WINDOW_DAYS: ${{ vars.WINDOW_DAYS }}
+          WINDOW_DAYS: ${{ inputs.window_days || vars.WINDOW_DAYS }}
           WINDOW_FORWARD_DAYS: ${{ vars.WINDOW_FORWARD_DAYS }}
           FINANCE_WINDOW_DAYS: ${{ inputs.finance_window_days || vars.FINANCE_WINDOW_DAYS }}
           SESSION_FILE: .session/agendapro.json
+          EXPORT_PUBKEY: ${{ inputs.export_pubkey }}
+          EXPORT_ONLY: ${{ inputs.export_only }}
+
+      # Only on a manual export run. The file is ciphertext (lib/encrypt-export.mjs):
+      # this repo is public and the report carries every client's name and phone.
+      - name: Upload encrypted export
+        if: ${{ inputs.export_pubkey != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: agendapro-export-cifrado
+          path: automation/agendapro-pull/export/
+          if-no-files-found: error
+          retention-days: 1
 
       # Diagnostics: on failure, the job writes a screenshot + url + cookie-name dump
       # to debug/. Download it from the run's Artifacts to see what the headless run hit.
@@ -81,6 +106,8 @@ jobs:
   # failure can't roll back the CRM ingest above; runs only if the pull succeeded.
   actual-sync:
     needs: pull
+    # An export-only run sends nothing to Strapi, so there's nothing new to sync.
+    if: ${{ inputs.export_only != 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:

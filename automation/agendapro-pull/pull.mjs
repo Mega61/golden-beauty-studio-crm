@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fetchLatestOtp } from './lib/gmail-otp.mjs';
 import { acquireReportUrl } from './lib/agendapro.mjs';
 import { downloadReport, uploadToStrapi } from './lib/strapi.mjs';
+import { encryptForRecipient } from './lib/encrypt-export.mjs';
 
 function env(name, required = true, fallback = undefined) {
   // GitHub Actions renders an undefined `${{ vars.X }}` as an empty string, not as
@@ -66,6 +67,13 @@ async function main() {
     // needs recent payments, and a short window keeps re-ingests cheap (upsert by tx_id).
     financeWindowDays: Number(env('FINANCE_WINDOW_DAYS', false, '10')),
     sessionFile: env('SESSION_FILE', false, '.session/agendapro.json'),
+    // Manual export (workflow_dispatch only): base64 of a PEM RSA public key. When set,
+    // the reservations report is also written ENCRYPTED to export/ for the artifact.
+    // The repo is public: the plain file must never leave this job.
+    exportPubKey: env('EXPORT_PUBKEY', false, ''),
+    // With the export, skip every Strapi upload: a one-off pull for the cutover must
+    // not change what the nightly sync owns.
+    exportOnly: env('EXPORT_ONLY', false, '') === 'true',
   };
 
   const startedAt = new Date().toISOString();
@@ -97,6 +105,18 @@ async function main() {
   // 1. Reservations report -> visits (CRM / winback).
   console.log('[pull] reservations report ready, downloading…');
   const buffer = await downloadReport(s3Url);
+
+  if (cfg.exportPubKey) {
+    const pem = Buffer.from(cfg.exportPubKey, 'base64').toString('utf8');
+    fs.mkdirSync('export', { recursive: true });
+    const file = path.join('export', `reservas_${day}.xlsx.enc`);
+    fs.writeFileSync(file, encryptForRecipient(buffer, pem));
+    console.log(`[pull] export cifrado: ${file} (${buffer.length} bytes en claro)`);
+  }
+  if (cfg.exportOnly) {
+    console.log('[pull] EXPORT_ONLY: sin subir nada a Strapi.');
+    return;
+  }
   console.log(`[pull] reservas ${buffer.length} bytes, uploading to Strapi…`);
   const result = await uploadToStrapi({
     url: cfg.ingestUrl,
