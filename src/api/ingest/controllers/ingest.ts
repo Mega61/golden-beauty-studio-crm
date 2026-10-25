@@ -6,6 +6,11 @@
  *   POST /api/ingest/agendapro         — JSON { bookings: [...] } already-normalized.
  *   POST /api/ingest/stampee           — multipart customers.json; runs the fidelization
  *                                         cross-check (no committed files / shell needed).
+ *   POST /api/ingest/payments          — JSON { payments: [...] } from the admin panel's
+ *                                         daily close (replaces the transactions scrape).
+ *   POST /api/ingest/panel-visits      — JSON { visits: [...], window? } from the admin
+ *                                         panel's nightly job (replaces the reservations
+ *                                         scrape); recomputes winback and syncs Stampee.
  *
  * Auth is a shared-secret header (`x-ingest-secret` == env INGEST_SHARED_SECRET), so the
  * external job needs no admin/user session. Fails loud (422) when a non-empty report
@@ -169,6 +174,40 @@ export default {
     }
     const result = await strapi.service('api::payment.ingest').markSynced(synced);
     ctx.body = { ok: true, ...result };
+  },
+
+  /**
+   * The admin panel's daily close. Same Payment rows the transactions scrape wrote, so
+   * actual-sync picks them up unchanged. All-or-nothing validation: a 400 here is a
+   * contract bug the panel shows as non-retryable, never half a day of income.
+   */
+  async payments(ctx: any) {
+    if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
+    const svc = strapi.service('api::payment.ingest');
+    const checked = svc.validatePanelPayments(ctx.request.body?.payments);
+    if (!checked.ok) return ctx.badRequest(checked.error);
+    const summary = await svc.ingestPanelPayments(checked.rows);
+    ctx.body = { ok: true, summary };
+  },
+
+  /**
+   * The admin panel's nightly visits push: keeps clients, win-back and Stampee fed now
+   * that the AgendaPro reservations scrape is gone.
+   */
+  async panelVisits(ctx: any) {
+    if (!secretOk(ctx)) return ctx.unauthorized('Invalid ingest secret.');
+    const body = ctx.request.body ?? {};
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    const w = body.window ?? {};
+    const window =
+      iso.test(String(w.start ?? '')) && iso.test(String(w.end ?? ''))
+        ? { start: String(w.start), end: String(w.end) }
+        : undefined;
+    const summary = await strapi.service('api::visit.ingest').ingestPanelVisits(body.visits, window);
+    if ('error' in summary) return ctx.badRequest(summary.error);
+    await recompute();
+    const stampee = await stampeeSyncSafe();
+    ctx.body = { ok: true, summary, stampee };
   },
 
   async stampee(ctx: any) {

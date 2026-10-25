@@ -27,6 +27,14 @@
  * payment, so while the list is set a payment with no client yet waits up to
  * UNNAMED_GRACE_DAYS (default 3) for it before being synced as a normal sale.
  *
+ * Since 2026-10-24 the money comes from the admin panel's daily close instead of the
+ * AgendaPro scrape (POST /ingest/payments, tx_id `ea-appt:<id>…`). Those rows skip the
+ * courtesy list and the name hold: the panel already leaves courtesies out (the owner
+ * ticks "cortesía de la casa" per bill, and a relative who did pay must be written), and
+ * it sends the client/service names with the payment. Their payee is ACTUAL_PANEL_PAYEE.
+ * The imported_id keeps the `agendapro-tx:` prefix on purpose: the finanzas bot links bank
+ * transfers to studio sales by that prefix, and changing it would double-count them.
+ *
  * Amounts are COP; Actual stores integer minor units (value * 100), positive = inflow.
  *
  * `--dry-run` (or DRY_RUN=1) fetches and prints the mapped transactions WITHOUT touching
@@ -54,6 +62,9 @@ const daysBefore = (iso, days) =>
   new Date(Date.parse(iso) - days * 86_400_000).toISOString().slice(0, 10);
 
 // Same as the CRM's normalizePhone: the last 10 digits, as +57XXXXXXXXXX.
+// Rows the admin panel wrote (see the header). Everything else is the AgendaPro scrape.
+const fromPanel = (inc) => String(inc.tx_id ?? '').startsWith('ea-appt:');
+
 const normPhone = (s) => {
   const digits = String(s ?? '').replace(/\D/g, '');
   return digits.length < 10 ? null : `+57${digits.slice(-10)}`;
@@ -134,6 +145,7 @@ async function main() {
     env('COURTESY_PHONES', false, '').split(/[;,]/).map(normPhone).filter(Boolean),
   );
   cfg.unnamedGraceDays = Number(env('UNNAMED_GRACE_DAYS', false, '3'));
+  cfg.panelPayee = env('ACTUAL_PANEL_PAYEE', false, 'Golden Beauty Studio');
 
   // Derive the incomes + mark-synced routes from INGEST_URL unless overridden.
   const incomesUrl = env(
@@ -153,10 +165,10 @@ async function main() {
     throw new Error('COURTESY_PHONES is set but Strapi sends no client_phone: redeploy Strapi first');
   }
   // Split off the courtesy sales, and hold back the ones that can't be told apart yet.
-  const isCourtesy = (inc) => cfg.courtesyPhones.has(inc.client_phone);
+  const isCourtesy = (inc) => !fromPanel(inc) && cfg.courtesyPhones.has(inc.client_phone);
   const nameDue = daysBefore(bogotaToday(), cfg.unnamedGraceDays);
   const waitsForName = (inc) =>
-    cfg.courtesyPhones.size > 0 && !inc.client_name && inc.paid_at > nameDue;
+    !fromPanel(inc) && cfg.courtesyPhones.size > 0 && !inc.client_name && inc.paid_at > nameDue;
   const courtesy = unsynced.filter(isCourtesy);
   const held = unsynced.filter((i) => !isCourtesy(i) && waitsForName(i));
   const incomes = unsynced.filter((i) => !isCourtesy(i) && !waitsForName(i));
@@ -193,7 +205,7 @@ async function main() {
     const txn = {
       date: inc.paid_at,
       amount: Math.round((Number(inc.amount) + Number(inc.tip || 0)) * 100), // COP -> minor, inflow
-      payee_name: 'AgendaPro',
+      payee_name: fromPanel(inc) ? cfg.panelPayee : 'AgendaPro',
       imported_id: `agendapro-tx:${inc.tx_id}`,
       category: cfg.categoryServicios,
       notes: notesFor(inc),

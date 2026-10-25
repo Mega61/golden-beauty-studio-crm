@@ -40,7 +40,7 @@
     },
     "source": {
       "type": "enumeration",
-      "enum": ["manual_import", "agendapro"],
+      "enum": ["manual_import", "agendapro", "panel"],
       "default": "manual_import"
     },
     "price_list": {
