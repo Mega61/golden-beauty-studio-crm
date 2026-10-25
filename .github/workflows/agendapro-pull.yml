@@ -1,13 +1,10 @@
 name: AgendaPro daily pull
 
 on:
-  schedule:
-    # 23:50 UTC = 18:50 America/Bogota. Deliberately OFF the 00:00-UTC top-of-hour
-    # slot: that slot is GitHub's most congested and was slipping our run ~4h late
-    # (to ~11pm Bogota). An off-:00 minute fires near on-time; the :50 target leaves
-    # headroom so a small delay still lands it around 7pm. GitHub gives no exact-time
-    # guarantee for scheduled runs — if 7pm must be precise, trigger via the server.
-    - cron: '50 23 * * *'
+  # No schedule since 2026-10-24: AgendaPro was cancelled and the admin panel is now the
+  # source of payments (POST /ingest/payments) and visits (POST /ingest/panel-visits).
+  # Kept as a manual run for the encrypted cutover export. The Actual Budget sync that
+  # used to ride along as a second job lives in actual-sync.yml on its own schedule.
   workflow_dispatch: # manual trigger for testing
     inputs:
       finance_window_days:
@@ -76,38 +73,3 @@ jobs:
           path: automation/agendapro-pull/debug/
           if-no-files-found: ignore
           retention-days: 7
-
-  # Push the freshly-ingested payments into Actual Budget. Separate job so a finance
-  # failure can't roll back the CRM ingest above; runs only if the pull succeeded.
-  actual-sync:
-    needs: pull
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: automation/actual-sync
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Sync income to Actual Budget
-        run: node sync.mjs
-        env:
-          INGEST_URL: ${{ vars.INGEST_URL }}
-          INGEST_INCOMES_URL: ${{ vars.INGEST_INCOMES_URL }}
-          INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
-          ACTUAL_SERVER_URL: ${{ secrets.ACTUAL_SERVER_URL }}
-          ACTUAL_PASSWORD: ${{ secrets.ACTUAL_PASSWORD }}
-          ACTUAL_SYNC_ID: ${{ secrets.ACTUAL_SYNC_ID }}
-          ACTUAL_ACCT_BANCOLOMBIA: ${{ vars.ACTUAL_ACCT_BANCOLOMBIA }}
-          ACTUAL_ACCT_EFECTIVO: ${{ vars.ACTUAL_ACCT_EFECTIVO }}
-          ACTUAL_ACCT_DEFAULT: ${{ vars.ACTUAL_ACCT_DEFAULT }}
-          ACTUAL_CATEGORY_SERVICIOS: ${{ vars.ACTUAL_CATEGORY_SERVICIOS }}
-          ACTUAL_SYNC_SINCE: ${{ vars.ACTUAL_SYNC_SINCE }}
-          COURTESY_PHONES: ${{ vars.COURTESY_PHONES }}
-          UNNAMED_GRACE_DAYS: ${{ vars.UNNAMED_GRACE_DAYS }}

@@ -52,5 +52,17 @@ export default {
       handler: 'ingest.stampeeSync',
       config: { auth: false },
     },
+    {
+      method: 'POST',
+      path: '/ingest/payments',
+      handler: 'ingest.payments',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
+      path: '/ingest/panel-visits',
+      handler: 'ingest.panelVisits',
+      config: { auth: false },
+    },
   ],
 };

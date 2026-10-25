@@ -32,7 +32,7 @@ export interface NormalizedBooking {
   service_category?: ServiceCategory;
   service_date: string; // ISO YYYY-MM-DD
   status: VisitStatus;
-  source?: 'manual_import' | 'agendapro';
+  source?: 'manual_import' | 'agendapro' | 'panel';
   price_list?: number | null;
   price_real?: number | null;
 }
@@ -247,6 +247,65 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       cancelled++;
     }
     return cancelled;
+  },
+
+  /**
+   * The admin panel's nightly push (it replaced AgendaPro on 2026-10-24). Body rows are
+   * Easy!Appointments appointments already reduced to a booking: `booking_id` is
+   * `ea-appt:<id>`, status already one of ours. The phone is normalized here, not
+   * trusted, because the Client upsert keys on it.
+   *
+   * `window` works like the AgendaPro report's: visits strictly inside it that the push
+   * no longer contains are cancelled (a booking deleted or moved in the agenda). The
+   * panel never sends a window that starts before the cutover, so AgendaPro history is
+   * out of its reach. Never sweeps on an empty push.
+   */
+  async ingestPanelVisits(
+    rows: unknown,
+    window?: ReportWindow,
+  ): Promise<IngestSummary | { error: string }> {
+    if (!Array.isArray(rows)) return { error: 'Expected JSON body { visits: [...] }.' };
+    const statuses: VisitStatus[] = ['completed', 'upcoming', 'cancelled'];
+    const normalized: NormalizedBooking[] = [];
+    let skipped_no_phone = 0;
+    for (const [i, raw] of rows.entries()) {
+      const r = (raw ?? {}) as Record<string, unknown>;
+      const booking_id = typeof r.booking_id === 'string' ? r.booking_id.trim() : '';
+      if (!booking_id.startsWith('ea-appt:')) return { error: `visits[${i}].booking_id must start with "ea-appt:"` };
+      const service_date = typeof r.service_date === 'string' ? r.service_date : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(service_date)) return { error: `visits[${i}].service_date must be YYYY-MM-DD` };
+      if (!statuses.includes(r.status as VisitStatus)) return { error: `visits[${i}].status must be ${statuses.join(' | ')}` };
+      const service_name = typeof r.service_name === 'string' ? r.service_name.trim() : '';
+      if (!service_name) return { error: `visits[${i}].service_name is required` };
+      const phone = normalizePhone(typeof r.phone === 'string' ? r.phone : null);
+      if (!phone) {
+        skipped_no_phone++;
+        continue;
+      }
+      const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+      const int = (v: unknown) => (Number.isSafeInteger(v) ? (v as number) : null);
+      normalized.push({
+        booking_id,
+        phone,
+        full_name: text(r.full_name) ?? '',
+        email: text(r.email),
+        service_name,
+        service_date,
+        status: r.status as VisitStatus,
+        source: 'panel',
+        price_list: int(r.price_list),
+        price_real: int(r.price_real),
+      });
+    }
+
+    const seen = new Set<string>();
+    const summary = await this.upsertMany(normalized, seen);
+    summary.received = rows.length;
+    summary.skipped_no_phone = skipped_no_phone;
+    if (window && seen.size > 0) {
+      summary.visits_cancelled_missing = await this.cancelMissing(window, seen);
+    }
+    return summary;
   },
 
   /** Ingest raw AgendaPro export rows (manual import entry point). */

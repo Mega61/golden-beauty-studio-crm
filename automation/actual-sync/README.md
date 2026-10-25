@@ -23,6 +23,20 @@ ingests after the transactions report (`POST /api/ingest/agendapro-sales`, joine
 transactions.xlsx → Strapi Payment rows → [this job] → Actual Budget
 ```
 
+## Since 2026-10-24: the admin panel is the producer
+
+AgendaPro was cancelled. Payments now come from the admin panel's **Cierre del día**
+(`POST /api/ingest/payments`, JSON, `tx_id = ea-appt:<id>`, plus `:<method>` for a split
+bill and `:adj<n>` for a post-close correction), and this job runs on its own schedule in
+`.github/workflows/actual-sync.yml` (21:30 and 06:30 Bogota). `agendapro-pull.yml` has no
+schedule anymore; it stays only for the manual encrypted export.
+
+Panel rows differ in three ways: they bring the client/service names themselves, they skip
+`COURTESY_PHONES` and the name hold (the panel's own "cortesía de la casa" checkbox already
+keeps courtesies out, and a relative who *did* pay must be written), and their payee is
+`ACTUAL_PANEL_PAYEE` (default `Golden Beauty Studio`). The `imported_id` keeps the
+`agendapro-tx:` prefix — the finanzas bot links bank transfers to sales by it.
+
 ## Mapping
 
 | Actual field  | Source                                   |
