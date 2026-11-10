@@ -1,0 +1,57 @@
+# El stack `strapi-cms` de producción, en modo Git: Portainer lee este archivo
+# del repo y hace polling cada 5 min. La imagen sale de `.env` (al lado), que CI
+# reescribe con el digest de cada build. Los secretos NO van acá: cada `${VAR}`
+# se define en Portainer (stack → Environment variables). Ver docs/DEPLOY.md.
+services:
+  strapi:
+    container_name: strapi
+    image: ${STRAPI_IMAGE}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1337/_health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    environment:
+      NODE_ENV: production
+      DATABASE_CLIENT: postgres
+      DATABASE_HOST: postgres-transversal-database-1
+      DATABASE_PORT: 5432
+      DATABASE_NAME: strapi
+      DATABASE_USERNAME: ${DATABASE_USERNAME}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      APP_KEYS: ${APP_KEYS}
+      API_TOKEN_SALT: ${API_TOKEN_SALT}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      TRANSFER_TOKEN_SALT: ${TRANSFER_TOKEN_SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET}
+      IS_PROXIED: ${IS_PROXIED}
+      INGEST_SHARED_SECRET: ${INGEST_SHARED_SECRET}
+      STAMPEE_API_URL: ${STAMPEE_API_URL}
+      STAMPEE_API_KEY: ${STAMPEE_API_KEY}
+      STAMPEE_AUTOCREATE: true
+      STAMPEE_AUTOSTAMP: true
+      STAMPEE_STAMP_GOAL: 8
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
+      GCS_BASE_URL: ${GCS_BASE_URL}
+      WATERMARK_ENABLED: ${WATERMARK_ENABLED}
+      WATERMARK_FOLDER: ${WATERMARK_FOLDER}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      MEDIA_CSP_ORIGINS: ${MEDIA_CSP_ORIGINS}
+      LANDING_URL: ${LANDING_URL}
+      REVALIDATE_URL: ${REVALIDATE_URL}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET}
+      CAREERS_SHARED_SECRET: ${CAREERS_SHARED_SECRET}
+    networks:
+      - web
+      - data
+
+networks:
+  web:
+    external: true
+  data:
+    external: true
