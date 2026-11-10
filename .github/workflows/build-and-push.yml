@@ -1,9 +1,22 @@
+# Construye la imagen del CMS, la publica en GHCR y escribe su digest en
+# `deploy/compose/.env`. Portainer (stack `strapi-cms` en modo Git) hace polling
+# del repo y redespliega solo. CI no tiene ninguna credencial hacia la VM: su
+# único secreto es el `GITHUB_TOKEN`. Es el mismo diseño del panel
+# (golden-beauty-studio-landing, `admin-image.yml`): los webhooks de stack son
+# Business Edition en Portainer.
+#
+# Dos guardas anti-bucle, porque el último paso commitea al repo:
+#   1. `paths-ignore` — un push que solo toca `deploy/**` no construye.
+#   2. `[skip ci]` en el mensaje del commit de despliegue.
+
 name: Build and Push Strapi Image
 
 on:
   push:
     branches:
       - master
+    paths-ignore:
+      - "deploy/**"
 
 env:
   REGISTRY: ghcr.io
@@ -13,7 +26,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Checkout repository
@@ -27,6 +40,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -38,32 +52,27 @@ jobs:
           build-args: |
             STRAPI_ADMIN_BACKEND_URL=https://cms.goldenbeautystudio.com.co
 
-      # Redeploy without going through the Portainer UI.
-      #
-      # Why this exists: clicking "Update the stack" in the browser holds one HTTP
-      # request open for the whole pull + extract. This image's node_modules layer
-      # (Strapi + sharp/libvips) takes well over a minute to unpack on a small VM,
-      # so the proxy in front of Portainer times out and answers 500 while Docker
-      # is still working. The webhook is fire-and-forget: Portainer pulls and
-      # recreates the stack server-side, with no browser request to expire.
-      #
-      # Setup (once): Portainer → the stack → Webhooks → create, copy the URL into
-      # the repo secret PORTAINER_WEBHOOK_URL. Treat it like a password — anyone
-      # holding it can redeploy. Without the secret this step is a no-op, so the
-      # workflow stays green for anyone who prefers deploying by hand.
-      - name: Trigger Portainer redeploy
+      # Por digest y no por `:latest`: `git revert` de este commit devuelve
+      # exactamente la imagen anterior. Portainer lo toma en su próximo polling.
+      - name: Escribir el digest en deploy/compose/.env
         env:
-          WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "PORTAINER_WEBHOOK_URL not set — skipping automatic redeploy."
-            echo "Deploy manually (see docs/DEPLOY.md) or add the secret."
+          set -euo pipefail
+          test -n "$DIGEST"
+          # Solo la línea del digest: el resto del archivo explica por qué existe.
+          sed -i -E "s#^STRAPI_IMAGE=.*#STRAPI_IMAGE=${IMAGE}@${DIGEST}#" deploy/compose/.env
+          grep -q "^STRAPI_IMAGE=${IMAGE}@sha256:" deploy/compose/.env
+
+          if git diff --quiet -- deploy/compose/.env; then
+            echo "El digest no cambió. No hay nada que desplegar."
             exit 0
           fi
-          code=$(curl -sS -X POST -o /dev/null -w '%{http_code}' --max-time 30 "$WEBHOOK")
-          echo "Portainer webhook responded $code"
-          # 2xx means Portainer accepted the job, not that the pull has finished.
-          case "$code" in
-            2*) echo "Redeploy queued. Watch the stack logs in Portainer." ;;
-            *) echo "::error::Portainer webhook rejected the request ($code)"; exit 1 ;;
-          esac
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/compose/.env
+          git commit -m "[skip ci] deploy: cms ${GITHUB_SHA::7}"
+          git pull --rebase --autostash origin master
+          git push origin HEAD:master

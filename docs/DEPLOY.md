@@ -1,10 +1,22 @@
 # Deploying the CMS
 
-The image is built by GitHub Actions on every push to `master`
-(`.github/workflows/build-and-push.yml`) and pushed to GHCR as two tags:
+**Merging to `master` deploys.** The stack `strapi-cms` runs in Portainer's Git
+mode, from `deploy/compose/strapi-stack.yml` in this repo, and polls it every
+5 minutes:
 
-- `ghcr.io/mega61/golden-beauty-studio-crm:latest`
-- `ghcr.io/mega61/golden-beauty-studio-crm:<commit-sha>` ← use this to roll back
+1. `.github/workflows/build-and-push.yml` builds the image and pushes it to GHCR
+   (`:latest` and `:<commit-sha>`).
+2. It writes the new image **digest** into `deploy/compose/.env`
+   (`STRAPI_IMAGE=…@sha256:…`) and commits `[skip ci] deploy: cms <sha>`.
+3. Portainer sees the new commit on its next poll, pulls that exact image and
+   recreates the container. Nothing times out in a browser, and CI has no
+   credential for the VM.
+
+Secrets never go in the compose file: every `${VAR}` is set in Portainer →
+stack `strapi-cms` → Environment variables. The compose and `.env` are public.
+
+The first poll after a merge pulls the image on the VM, which takes a minute or
+two (the `node_modules` layer is big). Strapi then needs ~1 min to boot.
 
 ## Why "Update the stack" in the Portainer UI fails with a 500
 
@@ -21,47 +33,20 @@ the problem you would never reach "Extracting" at all — the pull would fail at
 authentication or manifest resolution. **Adding the registry to Portainer does not
 help this failure**; the pull is already working.
 
-## Pick one of these three
+## Deploying by hand (Git mode broken, or an urgent hotfix)
 
-### 1. Webhook (recommended, and automatic)
-
-Portainer redeploys server-side, so nothing can time out in a browser.
-
-1. Portainer → the stack → **Webhooks** → create one, copy the URL.
-2. GitHub → repo → Settings → Secrets and variables → Actions → new secret
-   `PORTAINER_WEBHOOK_URL` with that URL. Treat it as a password: anyone holding
-   it can trigger a redeploy.
-3. Push to `master`. CI builds, pushes, then calls the webhook. Watch progress in
-   the Portainer stack log, not in the Actions run — a 2xx from the webhook means
-   "accepted", not "finished".
-
-Until the secret exists the workflow's redeploy step prints a note and passes, so
-adding it is optional.
-
-### 2. Pre-pull, then update without re-pulling
-
-Good when you want to deploy by hand, and the fastest way out when the UI is
-already stuck.
+Pre-pull on the VM so nothing waits on a browser request, then update without
+re-pulling:
 
 ```bash
 # On the VM, over SSH:
-docker pull ghcr.io/mega61/golden-beauty-studio-crm:latest   # takes as long as it takes
+docker pull ghcr.io/mega61/golden-beauty-studio-crm:latest
 ```
 
-Then in Portainer: **Update the stack** with *Re-pull image* **OFF**. The image is
-already local, so the request finishes in seconds and never approaches the
-timeout.
-
-### 3. Raise the proxy timeout
-
-Only needed if you insist on pulling from the UI. On whatever fronts Portainer
-(Nginx Proxy Manager, Caddy, Traefik), raise the read/response timeout for that
-host to 300s. For Nginx:
-
-```nginx
-proxy_read_timeout 300s;
-proxy_send_timeout 300s;
-```
+Then in Portainer: stack `strapi-cms` → **Pull and redeploy** with *Re-pull
+image* **OFF**. In Git mode the image comes from `deploy/compose/.env`, so a
+hand deploy of a different image only lasts until the next poll: commit the
+digest there too.
 
 ## Before blaming the timeout: check disk
 
@@ -80,13 +65,9 @@ worth doing routinely.
 
 ## Rolling back
 
-```bash
-# In the stack's compose, pin the tag to the last good commit:
-image: ghcr.io/mega61/golden-beauty-studio-crm:<commit-sha>
-```
-
-Deploying a SHA tag instead of `:latest` is also the honest way to know what is
-running — `:latest` tells you nothing about which commit is live.
+`git revert` the `[skip ci] deploy: cms <sha>` commit (through a PR, like any
+change) and Portainer goes back to exactly the previous image on its next poll.
+The digest in `deploy/compose/.env` is always what is live.
 
 ## Verifying a deploy landed
 

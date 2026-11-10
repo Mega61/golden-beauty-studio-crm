@@ -122,6 +122,8 @@ coverage
 ############################
 
 .env
+# El digest de la imagen de producción: versionado a propósito, sin secretos.
+!deploy/compose/.env
 license.txt
 exports
 .strapi
