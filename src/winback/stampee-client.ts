@@ -11,6 +11,9 @@ export interface StampeeCard {
   stamps?: number;
   lastVisit?: string | null;
   campaignId?: string | null;
+  templateSnapshot?: Record<string, unknown> | null;
+  /** Card transactions (`?include=cards,transactions`): tells gifted stamps from visit stamps. */
+  history?: Array<{ type: string; amount?: number; timestamp?: number | string }>;
 }
 export interface StampeeCustomerApi {
   id: string;
@@ -26,6 +29,8 @@ export interface StampeeCampaign {
   isEnabled?: boolean;
   /** Stamps required to complete the card (the redemption goal). */
   totalStamps?: number;
+  /** Stamps a new card on this campaign starts with (welcome gift). */
+  bonusStamps?: number;
 }
 
 function cfg(): { base: string; key: string } | null {
@@ -78,7 +83,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function listCustomersWithCards(): Promise<StampeeCustomerApi[]> {
-  return call<StampeeCustomerApi[]>('/customers?include=cards');
+  return call<StampeeCustomerApi[]>('/customers?include=cards,transactions');
 }
 
 export function listCampaigns(): Promise<StampeeCampaign[]> {

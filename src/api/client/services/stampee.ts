@@ -17,7 +17,9 @@ import {
   addCardTransaction,
   type StampeeCustomerApi,
   type StampeeCard,
+  type StampeeCampaign,
 } from '../../../winback/stampee-client';
+import { cardGoal, pickMainCampaign, pickStampCard, planStamps } from '../../../winback/stamp-plan';
 
 const CLIENT_UID = 'api::client.client';
 const VISIT_UID = 'api::visit.visit';
@@ -49,40 +51,39 @@ const last10 = (raw: string | null | undefined): string | null => {
   return n ? n.slice(-10) : null;
 };
 
-/** The active (non-redeemed) card with the most progress — the one whose count we display. */
-const activeCard = (cards: StampeeCard[] | undefined): StampeeCard | undefined =>
-  (cards ?? [])
-    .filter((cd) => (cd.status ?? 'Active') !== 'Redeemed')
-    .sort((a, b) => (b.stamps ?? 0) - (a.stamps ?? 0))[0];
+const envStampGoal = (): number | undefined => {
+  const n = Number(process.env.STAMPEE_STAMP_GOAL);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+};
+
+/** How many cards each campaign holds — picks the main campaign once a second one is enabled. */
+const cardCounts = (customers: StampeeCustomerApi[]): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const c of customers)
+    for (const cd of c.cards ?? [])
+      if (cd.campaignId) counts.set(cd.campaignId, (counts.get(cd.campaignId) ?? 0) + 1);
+  return counts;
+};
 
 export default ({ strapi }: { strapi: Core.Strapi }) => ({
   /**
    * The campaign stamp goal (e.g. 8), preferring the live campaign's `totalStamps` and
    * falling back to STAMPEE_STAMP_GOAL. Used both to display "n/goal" and to cap stamping.
    */
-  async resolveStampGoal(): Promise<number | null> {
+  async resolveStampGoal(customers: StampeeCustomerApi[] = []): Promise<number | null> {
     try {
       const campaigns = await listCampaigns();
-      const pinned = process.env.STAMPEE_CAMPAIGN_ID;
-      const enabled = campaigns.filter((c) => c.isEnabled !== false);
-      const pick = pinned
-        ? campaigns.find((c) => c.id === pinned)
-        : enabled.length === 1
-          ? enabled[0]
-          : campaigns.length === 1
-            ? campaigns[0]
-            : undefined;
+      const pick = pickMainCampaign(campaigns, process.env.STAMPEE_CAMPAIGN_ID, cardCounts(customers));
       if (pick && typeof pick.totalStamps === 'number' && pick.totalStamps > 0) return pick.totalStamps;
     } catch {
       /* fall back to env */
     }
-    const envGoal = Number(process.env.STAMPEE_STAMP_GOAL);
-    return Number.isFinite(envGoal) && envGoal > 0 ? envGoal : null;
+    return envStampGoal() ?? null;
   },
 
   async crosscheck(
     customers: StampeeCustomer[],
-    opts: { goal?: number | null } = {},
+    opts: { goal?: number | null; campaigns?: StampeeCampaign[] } = {},
   ): Promise<CrosscheckSummary> {
     // 1. Drop internal staff/owner Stampee logins.
     const external = customers.filter((c) => !String(c.email ?? '').includes(INTERNAL_EMAIL));
@@ -99,7 +100,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // 3. Stamp each Strapi client matched / sin_tarjeta, and mirror the live stamp count.
     const clients = (await strapi.documents(CLIENT_UID).findMany({ limit: 1000 })) as any[];
-    const goal = opts.goal ?? null;
+    const campaignById = new Map((opts.campaigns ?? []).map((c) => [c.id, c]));
     let matched = 0;
     const sin_tarjeta_names: string[] = [];
 
@@ -110,9 +111,12 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       if (status === 'matched') matched++;
       else sin_tarjeta_names.push(cl.full_name || cl.phone);
 
-      // Live stamps from the active card (null when matched-but-no-card, or no match at all).
-      const card = cust ? activeCard(cust.cards) : undefined;
+      // Live stamps from the card visits land on (null when matched-but-no-card, or no match at all).
+      const card = cust ? pickStampCard(cust.cards ?? []) : undefined;
       const stamps = card ? Number(card.stamps ?? 0) : null;
+      // That card's own goal (a win-back campaign may differ), else the main campaign's.
+      const cg = card ? cardGoal(card, campaignById.get(card.campaignId ?? ''), opts.goal ?? undefined) : NaN;
+      const goal = Number.isFinite(cg) ? cg : (opts.goal ?? null);
 
       const updates: Record<string, unknown> = {};
       if (cl.stampee_card !== status) updates.stampee_card = status;
@@ -142,14 +146,16 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     return listCustomersWithCards();
   },
 
-  /** The campaign to issue cards on: env override, else the single enabled campaign. */
-  async resolveCampaignId(): Promise<string> {
-    const envId = process.env.STAMPEE_CAMPAIGN_ID;
-    if (envId) return envId;
-    const campaigns = await listCampaigns();
+  /**
+   * The campaign to issue new clients' cards on: env override, else the single enabled campaign,
+   * else the enabled campaign holding the most cards (so enabling a win-back campaign doesn't stop
+   * the normal flow). Throws only when that's still ambiguous.
+   */
+  async resolveCampaignId(customers: StampeeCustomerApi[] = []): Promise<string> {
+    const campaigns = process.env.STAMPEE_CAMPAIGN_ID ? [] : await listCampaigns();
+    const pick = pickMainCampaign(campaigns, process.env.STAMPEE_CAMPAIGN_ID, cardCounts(customers));
+    if (pick) return pick.id;
     const enabled = campaigns.filter((c) => c.isEnabled !== false);
-    if (enabled.length === 1) return enabled[0].id;
-    if (campaigns.length === 1) return campaigns[0].id;
     throw new Error(
       `Cannot auto-pick a Stampee campaign (${campaigns.length} found, ${enabled.length} enabled) — set STAMPEE_CAMPAIGN_ID`,
     );
@@ -211,7 +217,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         continue;
       }
       try {
-        if (!campaignId) campaignId = await this.resolveCampaignId();
+        if (!campaignId) campaignId = await this.resolveCampaignId(customers);
         let customerId = match?.id;
         if (!customerId) {
           const created = await createCustomer({
@@ -252,12 +258,13 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
 
   /**
    * Per-visit stamping (plan §5.4). Reconciles each carded client's Stampee card so its stamp
-   * count EQUALS their number of completed visits (capped at the campaign goal). The count is
-   * ABSOLUTE, not additive: re-running an import leaves an already-correct card untouched, and it
-   * repairs cards an earlier additive version double-counted. Past redemptions are respected — each
-   * redeemed card means `goal` visits were already cashed out, so only the remainder lands on the
-   * current card. Stamp #1 (ever) logs "Primera visita", the rest "Visita recurrente"; a downward
-   * repair logs one "Corrección de sellos". Redeemed cards are never stamped.
+   * count EQUALS their completed visits not already on another card, plus the card's gifted stamps
+   * (welcome, win-back gift, game bonus), capped at the goal — rules in `winback/stamp-plan.ts`.
+   * The count is ABSOLUTE, not additive: re-running an import leaves an already-correct card
+   * untouched, and it repairs cards an earlier additive version double-counted. Visits land on the
+   * newest active card, so a win-back card issued on top of an old one takes over. Stamp #1 (ever)
+   * logs "Primera visita", the rest "Visita recurrente"; a downward repair logs one "Corrección de
+   * sellos". Redeemed cards are never stamped.
    * Best-effort: per-client errors are collected, never thrown.
    */
   async stampVisits(
@@ -277,18 +284,13 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       errors: [] as Array<{ client: string; error: string }>,
     };
 
-    // Campaign → stamp goal (the redemption target). Env override / fallback if the API omits it.
-    const goalByCampaign = new Map<string, number>();
+    // Campaigns carry each card's goal and welcome gift. Env goal is the fallback if the API fails.
+    let campaigns: StampeeCampaign[] = [];
     try {
-      for (const c of await listCampaigns()) {
-        if (typeof c.totalStamps === 'number' && c.totalStamps > 0) goalByCampaign.set(c.id, c.totalStamps);
-      }
+      campaigns = await listCampaigns();
     } catch {
-      /* fall back to the env goal below */
+      /* fall back to the env goal */
     }
-    const envGoal = Number(process.env.STAMPEE_STAMP_GOAL);
-    const goalFor = (campaignId?: string | null): number =>
-      goalByCampaign.get(campaignId ?? '') ?? (Number.isFinite(envGoal) && envGoal > 0 ? envGoal : Infinity);
 
     // Index Stampee customers by phone → their cards.
     const cardsByPhone = new Map<string, StampeeCard[]>();
@@ -308,26 +310,16 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         const l = last10(cl.phone);
         if (!l) continue;
 
-        // The active (non-redeemed) card with the most progress is the one we reconcile.
         const cards = cardsByPhone.get(l) ?? [];
-        const card = cards
-          .filter((cd) => (cd.status ?? 'Active') !== 'Redeemed')
-          .sort((a, b) => (b.stamps ?? 0) - (a.stamps ?? 0))[0];
-        if (!card) {
+        if (!pickStampCard(cards)) {
           summary.skipped_no_active_card++;
           continue;
         }
 
         const completed = await this.completedVisitCount(cl.documentId);
-        const goal = goalFor(card.campaignId);
-        const cap = Number.isFinite(goal) ? goal : Infinity;
-        // Each already-redeemed card represents `goal` visits cashed out — don't re-stamp those.
-        const redeemed = cards.filter((cd) => (cd.status ?? 'Active') === 'Redeemed').length;
-        const baseline = Number.isFinite(goal) ? goal * redeemed : 0;
-
-        const current = Number(card.stamps ?? 0);
-        // Absolute target: stamps == completed visits not yet redeemed, capped at the goal.
-        const target = Math.max(0, Math.min(completed - baseline, cap));
+        const plan = planStamps(cards, completed, campaigns, envStampGoal())!;
+        const card = plan.card as StampeeCard;
+        const { goal, current, target } = plan;
         if (target === current) {
           summary.unchanged++;
           continue;
@@ -353,7 +345,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         if (target > current) {
           // One entry per newly-added stamp; the client's very first visit is "Primera visita".
           for (let p = current + 1; p <= target; p++) {
-            const visitNo = baseline + p;
+            const visitNo = plan.visitsElsewhere + p - plan.gifted;
             try {
               await addCardTransaction(card.id, {
                 type: 'stamp_add',
@@ -406,8 +398,9 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
   ): Promise<any> {
     if (!stampeeConfigured()) return { skipped: 'not_configured' };
     const customers = await this.fetchCustomers();
-    const goal = await this.resolveStampGoal();
-    const crosscheck = await this.crosscheck(customers, { goal });
+    const goal = await this.resolveStampGoal(customers);
+    const campaigns = await listCampaigns().catch(() => [] as StampeeCampaign[]);
+    const crosscheck = await this.crosscheck(customers, { goal, campaigns });
     let autocreate: any = null;
     let stamping: any = null;
     if (opts.dryRun) {
