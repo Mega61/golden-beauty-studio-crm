@@ -15,11 +15,14 @@ import {
   issueCard,
   patchCard,
   addCardTransaction,
+  listAvailableAdventRewards,
+  applyAdventDoubleStamp,
   type StampeeCustomerApi,
   type StampeeCard,
   type StampeeCampaign,
 } from '../../../winback/stampee-client';
 import { cardGoal, pickMainCampaign, pickStampCard, planStamps } from '../../../winback/stamp-plan';
+import { visitsForDoubleStamp } from '../../../winback/advent-double';
 
 const CLIENT_UID = 'api::client.client';
 const VISIT_UID = 'api::visit.visit';
@@ -31,6 +34,7 @@ export interface StampeeCustomer {
   email?: string | null;
   mobile?: string | null;
   status?: string;
+  publicId?: string;
   cards?: StampeeCard[];
 }
 
@@ -122,6 +126,8 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
       if (cl.stampee_card !== status) updates.stampee_card = status;
       if ((cl.stampee_stamps ?? null) !== stamps) updates.stampee_stamps = stamps;
       if (goal != null && cl.stampee_card_goal !== goal) updates.stampee_card_goal = goal;
+      // The client's permanent card link (Stampee 0018): it never changes with a new card.
+      if (cust?.publicId && cl.stampee_public_id !== cust.publicId) updates.stampee_public_id = cust.publicId;
       if (Object.keys(updates).length) {
         await strapi.documents(CLIENT_UID).update({
           documentId: cl.documentId,
@@ -237,8 +243,73 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
             stampee_card: 'matched',
             stampee_customer_id: customerId,
             stampee_card_unique_id: card.uniqueId,
+            ...(card.customerPublicId ? { stampee_public_id: card.customerPublicId } : {}),
           } as any,
         });
+      } catch (err: any) {
+        summary.errors.push({ client: cl.full_name || cl.phone, error: err?.message });
+      }
+    }
+    return summary;
+  },
+
+  /**
+   * Advent calendar "sellos dobles" (Stampee docs/ADVENT_PLAN.md): for each client holding the
+   * gift, send every completed visit of semipermanente or above inside the gift's dates. Stampee
+   * adds the extra stamp once per visit (idempotent on the booking), so re-running is safe.
+   * Best-effort: a Stampee without the calendar (404) or any error just skips.
+   */
+  async applyAdventDoubleStamps(customers: StampeeCustomerApi[]): Promise<any> {
+    const summary = { holders: 0, sent: 0, added: 0, errors: [] as Array<{ client: string; error: string }> };
+    let rewards: Array<{ customerId: string; kind: string; validFrom: string | null; validTo: string | null }>;
+    try {
+      rewards = (await listAvailableAdventRewards()).rewards.filter((r) => r.kind === 'double_stamps');
+    } catch (err: any) {
+      return { skipped: String(err?.message ?? err).slice(0, 200) };
+    }
+    if (rewards.length === 0) return summary;
+
+    const phoneOf = new Map<string, string>();
+    for (const c of customers) {
+      const l = last10(c.mobile);
+      if (l) phoneOf.set(c.id, l);
+    }
+    const clients = (await strapi.documents(CLIENT_UID).findMany({
+      filters: { last_visit_date: { $notNull: true } } as any,
+      limit: 1000,
+    })) as any[];
+    const clientByPhone = new Map<string, any>();
+    for (const cl of clients) {
+      const l = last10(cl.phone);
+      if (l) clientByPhone.set(l, cl);
+    }
+
+    for (const reward of rewards) {
+      const phone = phoneOf.get(reward.customerId);
+      const cl = phone ? clientByPhone.get(phone) : undefined;
+      if (!cl) continue;
+      summary.holders++;
+      try {
+        const visits = (await strapi.documents(VISIT_UID).findMany({
+          filters: { client: { documentId: cl.documentId }, status: 'completed' } as any,
+          fields: ['booking_id', 'service_name', 'service_category', 'service_date'] as any,
+          limit: 1000,
+        })) as any[];
+        const due = visitsForDoubleStamp(
+          visits.map((v) => ({
+            ref: v.booking_id,
+            date: String(v.service_date ?? '').slice(0, 10),
+            serviceName: v.service_name ?? '',
+            category: v.service_category ?? null,
+          })),
+          reward.validFrom,
+          reward.validTo,
+        );
+        for (const v of due) {
+          const out = await applyAdventDoubleStamp({ customerId: reward.customerId, visitRef: v.ref, visitDate: v.date });
+          summary.sent++;
+          summary.added += out.added;
+        }
       } catch (err: any) {
         summary.errors.push({ client: cl.full_name || cl.phone, error: err?.message });
       }
@@ -414,6 +485,8 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         stamping = await this.stampVisits(fresh, { dryRun: false });
       }
     }
-    return { crosscheck, autocreate, stamping };
+    // After stamping, so the visit stamp is on the card before its January double.
+    const adventDouble = opts.autostamp && !opts.dryRun ? await this.applyAdventDoubleStamps(customers) : null;
+    return { crosscheck, autocreate, stamping, adventDouble };
   },
 });
