@@ -75,6 +75,9 @@
     "stampee_card_unique_id": {
       "type": "string"
     },
+    "stampee_public_id": {
+      "type": "string"
+    },
     "stampee_stamped_count": {
       "type": "integer",
       "default": 0

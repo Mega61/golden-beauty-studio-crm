@@ -21,6 +21,8 @@ export interface StampeeCustomerApi {
   email?: string | null;
   mobile?: string | null;
   status?: string;
+  /** The customer's permanent public link id (Stampee 0018); absent on older Stampee. */
+  publicId?: string;
   cards?: StampeeCard[];
 }
 export interface StampeeCampaign {
@@ -102,8 +104,8 @@ export function createCustomer(body: {
 export function issueCard(body: {
   customerId: string;
   campaignId: string;
-}): Promise<{ id: string; uniqueId: string }> {
-  return call<{ id: string; uniqueId: string }>('/cards', {
+}): Promise<{ id: string; uniqueId: string; customerPublicId?: string }> {
+  return call<{ id: string; uniqueId: string; customerPublicId?: string }>('/cards', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -133,6 +135,32 @@ export function addCardTransaction(
   },
 ): Promise<any> {
   return call<any>(`/cards/${cardId}/transactions`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** An advent-calendar gift as the studio sees it (Stampee GET /advent/rewards). */
+export interface StampeeAdventReward {
+  customerId: string;
+  kind: string;
+  status: string;
+  validFrom: string | null;
+  validTo: string | null;
+}
+
+/** Available advent gifts of every customer. Throws on a Stampee without the calendar (404). */
+export function listAvailableAdventRewards(): Promise<{ rewards: StampeeAdventReward[] }> {
+  return call<{ rewards: StampeeAdventReward[] }>('/advent/rewards?status=available');
+}
+
+/** January double stamp for one qualifying visit. Idempotent on visitRef. */
+export function applyAdventDoubleStamp(body: {
+  customerId: string;
+  visitRef: string;
+  visitDate: string;
+}): Promise<{ added: number; reason?: string }> {
+  return call<{ added: number; reason?: string }>('/advent/double-stamps', {
     method: 'POST',
     body: JSON.stringify(body),
   });
