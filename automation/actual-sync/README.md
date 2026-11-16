@@ -37,6 +37,14 @@ keeps courtesies out, and a relative who *did* pay must be written), and their p
 `ACTUAL_PANEL_PAYEE` (default `Golden Beauty Studio`). The `imported_id` keeps the
 `agendapro-tx:` prefix — the finanzas bot links bank transfers to sales by it.
 
+**Gift card sales** (`tarjetas regalo`) also come from the panel, on the same push:
+`tx_id = bono:<code>` (code `TR-XXXX-XXXX`), plus `bono:<code>:adj<n>` (negative) when a
+card is voided after it was synced. They are panel rows (panel payee, no courtesy/name
+hold), land in the same Servicios category on the day they are paid (cash basis), and
+their notes read `Tarjeta regalo · <comprador> · <method>`. Redeeming a card later moves
+no money, so the panel never pushes it. These payments are not visits: the CRM never
+creates a Visit, a Client or a Stampee stamp from them.
+
 ## Mapping
 
 | Actual field  | Source                                   |
