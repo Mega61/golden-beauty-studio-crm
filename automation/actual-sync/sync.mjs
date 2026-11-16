@@ -32,6 +32,12 @@
  * courtesy list and the name hold: the panel already leaves courtesies out (the owner
  * ticks "cortesía de la casa" per bill, and a relative who did pay must be written), and
  * it sends the client/service names with the payment. Their payee is ACTUAL_PANEL_PAYEE.
+ *
+ * Gift card sales from the panel (tx_id `bono:<code>`, `bono:<code>:adj<n>` for a void
+ * after sync) are panel rows too: same payee, same Servicios category (cash basis: the
+ * money is income the day it is paid, not when the card is used), notes
+ * "Tarjeta regalo · <buyer> · <method>". Redeeming a card later moves no money, so the
+ * panel never pushes it.
  * The imported_id keeps the `agendapro-tx:` prefix on purpose: the finanzas bot links bank
  * transfers to studio sales by that prefix, and changing it would double-count them.
  *
@@ -42,6 +48,8 @@
  *
  * Fails loud (non-zero exit) on any error so the CI run goes red and notifies.
  */
+
+import { bareNotesFor, fromPanel, normPhone, notesFor, toActualTxn } from './mapping.mjs';
 
 // `@actual-app/api` is imported lazily (only for a live run) so `--dry-run` can preview
 // the mapping without the heavy dependency installed.
@@ -60,23 +68,6 @@ const bogotaToday = () => new Date(Date.now() - 5 * 3_600_000).toISOString().sli
 const fmtCOP = (minor) => `$${(minor / 100).toLocaleString('es-CO')}`;
 const daysBefore = (iso, days) =>
   new Date(Date.parse(iso) - days * 86_400_000).toISOString().slice(0, 10);
-
-// Same as the CRM's normalizePhone: the last 10 digits, as +57XXXXXXXXXX.
-// Rows the admin panel wrote (see the header). Everything else is the AgendaPro scrape.
-const fromPanel = (inc) => String(inc.tx_id ?? '').startsWith('ea-appt:');
-
-const normPhone = (s) => {
-  const digits = String(s ?? '').replace(/\D/g, '');
-  return digits.length < 10 ? null : `+57${digits.slice(-10)}`;
-};
-
-// The notes this job writes. Order matters to people reading them: who, what, then the ids.
-const notesFor = (inc) =>
-  [inc.client_name, inc.service_name, inc.sale_id ? `Venta ${inc.sale_id}` : null, inc.method]
-    .filter(Boolean)
-    .join(' · ');
-// What the notes looked like before the names existed — the only text refreshNotes replaces.
-const bareNotesFor = (inc) => notesFor({ ...inc, client_name: null, service_name: null });
 
 async function fetchIncomes({ incomesUrl, secret, since, all = false }) {
   const url = new URL(incomesUrl);
@@ -202,15 +193,7 @@ async function main() {
       console.warn(`[actual-sync] WARN tx ${inc.tx_id}: method 'otro' -> default account`);
     }
     const acct = acctFor(inc.method);
-    const txn = {
-      date: inc.paid_at,
-      amount: Math.round((Number(inc.amount) + Number(inc.tip || 0)) * 100), // COP -> minor, inflow
-      payee_name: fromPanel(inc) ? cfg.panelPayee : 'AgendaPro',
-      imported_id: `agendapro-tx:${inc.tx_id}`,
-      category: cfg.categoryServicios,
-      notes: notesFor(inc),
-      cleared: true,
-    };
+    const txn = toActualTxn(inc, { panelPayee: cfg.panelPayee, category: cfg.categoryServicios });
     if (!byAccount.has(acct)) byAccount.set(acct, []);
     byAccount.get(acct).push(txn);
   }

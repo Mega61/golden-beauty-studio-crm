@@ -259,6 +259,10 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
    * no longer contains are cancelled (a booking deleted or moved in the agenda). The
    * panel never sends a window that starts before the cutover, so AgendaPro history is
    * out of its reach. Never sweeps on an empty push.
+   *
+   * Only `ea-appt:` bookings are visits. A gift card sale (`bono:<code>` on the payments
+   * push) is money without a visit, so it must never land here: no Client, no win-back
+   * reset, no Stampee stamp.
    */
   async ingestPanelVisits(
     rows: unknown,
