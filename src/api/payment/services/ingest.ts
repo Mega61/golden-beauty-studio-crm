@@ -18,32 +18,14 @@ import {
   type AgendaProTxRawRow,
 } from '../../../winback/agendapro-transactions-xlsx';
 import { parseAgendaProSalesWorkbook } from '../../../winback/agendapro-sales-xlsx';
+import {
+  validatePanelPayments,
+  type NormalizedPayment,
+  type PaymentMethod,
+} from '../../../winback/panel-payments';
 
 const PAYMENT_UID = 'api::payment.payment';
 const CLIENT_UID = 'api::client.client';
-
-export type PaymentMethod = 'efectivo' | 'transferencia' | 'otro';
-
-/** A transactions row normalized to our internal shape. */
-export interface NormalizedPayment {
-  tx_id: string;
-  sale_id?: string | null;
-  paid_at: string; // ISO YYYY-MM-DD (payment date — cash basis)
-  amount: number; // COP integer
-  tip: number; // COP integer
-  method: PaymentMethod;
-  payment_status?: string | null;
-  /** Only the admin panel sends these; the AgendaPro path gets them from the sales report. */
-  client_name?: string | null;
-  service_name?: string | null;
-}
-
-/**
- * Panel payments are keyed `ea-appt:<id>` (plus `:<method>` for a split bill and
- * `:adj<n>` for a post-close correction). The prefix is what keeps them from ever
- * colliding with AgendaPro's numeric tx ids, so the JSON route accepts nothing else.
- */
-export const PANEL_TX_PREFIX = 'ea-appt:';
 
 export interface PanelPaymentsSummary {
   received: number;
@@ -155,46 +137,11 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 
   /**
-   * Validate a JSON batch from the admin panel's daily close. All-or-nothing: one bad
-   * row rejects the whole batch (400), so a broken contract fails loud instead of
-   * landing half a day in Actual. Returns the rows ready to upsert, or the first error.
+   * Validate a JSON batch from the admin panel's nightly push (appointment payments
+   * `ea-appt:…` and gift card sales `bono:…`). See winback/panel-payments.ts.
    */
-  validatePanelPayments(rows: unknown): { ok: true; rows: NormalizedPayment[] } | { ok: false; error: string } {
-    if (!Array.isArray(rows)) return { ok: false, error: 'Expected JSON body { payments: [...] }.' };
-    const out: NormalizedPayment[] = [];
-    const seen = new Set<string>();
-    for (const [i, raw] of rows.entries()) {
-      const r = (raw ?? {}) as Record<string, unknown>;
-      const where = `payments[${i}]`;
-      const tx_id = typeof r.tx_id === 'string' ? r.tx_id.trim() : '';
-      if (!tx_id.startsWith(PANEL_TX_PREFIX) || tx_id.length === PANEL_TX_PREFIX.length) {
-        return { ok: false, error: `${where}.tx_id must start with "${PANEL_TX_PREFIX}"` };
-      }
-      if (seen.has(tx_id)) return { ok: false, error: `${where}.tx_id ${tx_id} is repeated in the batch` };
-      seen.add(tx_id);
-      const paid_at = typeof r.paid_at === 'string' ? r.paid_at : '';
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(paid_at)) return { ok: false, error: `${where}.paid_at must be YYYY-MM-DD` };
-      // Signed: a post-close correction travels as its own (possibly negative) movement.
-      if (!Number.isSafeInteger(r.amount)) return { ok: false, error: `${where}.amount must be an integer` };
-      const tip = r.tip ?? 0;
-      if (!Number.isSafeInteger(tip) || (tip as number) < 0) {
-        return { ok: false, error: `${where}.tip must be a non-negative integer` };
-      }
-      if (r.method !== 'efectivo' && r.method !== 'transferencia' && r.method !== 'otro') {
-        return { ok: false, error: `${where}.method must be efectivo | transferencia | otro` };
-      }
-      const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 255) : null);
-      out.push({
-        tx_id,
-        paid_at,
-        amount: r.amount as number,
-        tip: tip as number,
-        method: r.method,
-        client_name: text(r.client_name),
-        service_name: text(r.service_name),
-      });
-    }
-    return { ok: true, rows: out };
+  validatePanelPayments(rows: unknown) {
+    return validatePanelPayments(rows);
   },
 
   /** Upsert a validated panel batch. Idempotent by tx_id, like the AgendaPro path. */
