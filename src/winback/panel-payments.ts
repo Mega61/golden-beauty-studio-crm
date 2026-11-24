@@ -34,10 +34,25 @@ export const PANEL_TX_PREFIX = 'ea-appt:';
 export const GIFT_CARD_TX_PREFIX = 'bono:';
 const GIFT_CARD_TX_RE = /^bono:TR-[0-9A-Z]{4}-[0-9A-Z]{4}(?::adj[1-9]\d*)?$/;
 
+/**
+ * Deposits ("adelantos") are keyed `abono:<id>` (the panel's `appointment_deposit` id),
+ * plus `:adj<n>` for a refund after the deposit was already pushed (a negative movement).
+ * Money paid days or weeks before the appointment, on the day it came in: like gift card
+ * sales, they never create a Visit, a Client or a Stampee stamp. The appointment's own
+ * payment arrives later as `ea-appt:<id>`, without the deposit inside.
+ */
+export const DEPOSIT_TX_PREFIX = 'abono:';
+const DEPOSIT_TX_RE = /^abono:[1-9]\d*(?::adj[1-9]\d*)?$/;
+
 /** True for a tx_id the panel may send. */
 export function isPanelTxId(tx_id: string): boolean {
   if (tx_id.startsWith(PANEL_TX_PREFIX)) return tx_id.length > PANEL_TX_PREFIX.length;
-  return GIFT_CARD_TX_RE.test(tx_id);
+  return GIFT_CARD_TX_RE.test(tx_id) || DEPOSIT_TX_RE.test(tx_id);
+}
+
+/** True for a deposit (or its refund), as opposed to an appointment payment. */
+export function isDepositTxId(tx_id: string | null | undefined): boolean {
+  return String(tx_id ?? '').startsWith(DEPOSIT_TX_PREFIX);
 }
 
 /** True for a gift card sale (or its adjustment), as opposed to an appointment payment. */
@@ -65,7 +80,7 @@ export function validatePanelPayments(
         ok: false,
         error:
           `${where}.tx_id must start with "${PANEL_TX_PREFIX}" ` +
-          `or be "${GIFT_CARD_TX_PREFIX}TR-XXXX-XXXX[:adj<n>]"`,
+          `or be "${GIFT_CARD_TX_PREFIX}TR-XXXX-XXXX[:adj<n>]" or "${DEPOSIT_TX_PREFIX}<id>[:adj<n>]"`,
       };
     }
     if (seen.has(tx_id)) return { ok: false, error: `${where}.tx_id ${tx_id} is repeated in the batch` };

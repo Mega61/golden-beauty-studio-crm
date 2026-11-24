@@ -1,7 +1,7 @@
 // node --test src/winback/panel-payments.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isGiftCardTxId, isPanelTxId, validatePanelPayments } from './panel-payments.ts';
+import { isDepositTxId, isGiftCardTxId, isPanelTxId, validatePanelPayments } from './panel-payments.ts';
 
 const row = (tx_id: string, extra: Record<string, unknown> = {}) => ({
   tx_id,
@@ -84,4 +84,28 @@ test('isPanelTxId / isGiftCardTxId', () => {
   assert.equal(isGiftCardTxId('bono:TR-AB12-CD34:adj1'), true);
   assert.equal(isGiftCardTxId('ea-appt:5'), false);
   assert.equal(isGiftCardTxId(null), false);
+});
+
+test('deposits are accepted: abono:<id> and abono:<id>:adj<n>, and are not gift cards', () => {
+  const res = validatePanelPayments([
+    row('abono:7', { client_name: 'Ana Ruiz', service_name: 'Adelanto cita 2026-12-12', paid_at: '2026-11-23' }),
+    row('abono:7:adj1', { amount: -20000, method: 'efectivo' }),
+    row('ea-appt:812', { amount: 100000 }),
+  ]);
+  assert.ok(res.ok, !res.ok ? res.error : '');
+  assert.equal(res.rows[0].tx_id, 'abono:7');
+  assert.equal(res.rows[0].paid_at, '2026-11-23');
+  assert.equal(res.rows[1].amount, -20000);
+  assert.equal(isDepositTxId('abono:7:adj1'), true);
+  assert.equal(isDepositTxId('bono:TR-7K3M-Q9XA'), false);
+  assert.equal(isGiftCardTxId('abono:7'), false);
+});
+
+test('malformed deposit ids reject the whole batch', () => {
+  for (const bad of ['abono:', 'abono:0', 'abono:07', 'abono:7:adj0', 'abono:7:adj', 'abono:7:efectivo', 'abono:x']) {
+    assert.equal(isPanelTxId(bad), false, bad);
+    const res = validatePanelPayments([row('ea-appt:1'), row(bad)]);
+    assert.equal(res.ok, false, bad);
+    assert.match(!res.ok ? res.error : '', /abono:<id>/);
+  }
 });

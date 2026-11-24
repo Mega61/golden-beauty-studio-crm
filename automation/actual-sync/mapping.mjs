@@ -5,10 +5,12 @@
 
 // Rows the admin panel wrote (see sync.mjs's header). Everything else is the AgendaPro
 // scrape. `ea-appt:` = an appointment's payment; `bono:` = a gift card sale (or its
-// `:adj<n>` void), money that came in without a visit.
+// `:adj<n>` void), money that came in without a visit; `abono:` = a deposit paid before
+// the appointment (or its `:adj<n>` refund), on the day it came in.
 export const isGiftCardSale = (inc) => String(inc.tx_id ?? '').startsWith('bono:');
+export const isDeposit = (inc) => String(inc.tx_id ?? '').startsWith('abono:');
 export const fromPanel = (inc) =>
-  String(inc.tx_id ?? '').startsWith('ea-appt:') || isGiftCardSale(inc);
+  String(inc.tx_id ?? '').startsWith('ea-appt:') || isGiftCardSale(inc) || isDeposit(inc);
 
 // Same as the CRM's normalizePhone: the last 10 digits, as +57XXXXXXXXXX.
 export const normPhone = (s) => {
@@ -17,7 +19,8 @@ export const normPhone = (s) => {
 };
 
 // The notes this job writes. Order matters to people reading them: who, what, then the ids.
-// A gift card sale reads "Tarjeta regalo · <buyer> · <method>".
+// A gift card sale reads "Tarjeta regalo · <buyer> · <method>". A deposit reads like an
+// appointment: "<client> · Adelanto cita <day> · <method>" (the panel sends that service name).
 export const notesFor = (inc) =>
   (isGiftCardSale(inc)
     ? ['Tarjeta regalo', inc.client_name, inc.method]
