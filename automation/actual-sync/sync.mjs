@@ -38,6 +38,10 @@
  * money is income the day it is paid, not when the card is used), notes
  * "Tarjeta regalo · <buyer> · <method>". Redeeming a card later moves no money, so the
  * panel never pushes it.
+ * Deposits ("adelantos", tx_id `abono:<id>`, `abono:<id>:adj<n>` for a refund) work the
+ * same way: income the day the client paid, ahead of a December-style booking. When the
+ * appointment is charged, the panel pushes only the rest (`ea-appt:<id>`). That is what
+ * lets the finanzas bot match the deposit transfer and the balance transfer separately.
  * The imported_id keeps the `agendapro-tx:` prefix on purpose: the finanzas bot links bank
  * transfers to studio sales by that prefix, and changing it would double-count them.
  *

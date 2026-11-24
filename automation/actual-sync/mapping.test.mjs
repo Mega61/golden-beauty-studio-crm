@@ -1,7 +1,7 @@
 // node --test automation/actual-sync/mapping.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bareNotesFor, fromPanel, isGiftCardSale, notesFor, toActualTxn } from './mapping.mjs';
+import { bareNotesFor, fromPanel, isDeposit, isGiftCardSale, notesFor, toActualTxn } from './mapping.mjs';
 
 const opts = { panelPayee: 'Golden Beauty Studio', category: 'cat-servicios' };
 
@@ -59,4 +59,31 @@ test('appointment payments and AgendaPro rows are unchanged', () => {
   assert.equal(a.payee_name, 'AgendaPro');
   assert.equal(a.imported_id, 'agendapro-tx:99812');
   assert.equal(a.notes, 'Monica Jaramillo · Tradicional pies · Venta 1129 · transferencia');
+});
+
+test('deposits are panel rows on the day they came in, with an appointment-style note', () => {
+  const inc = {
+    tx_id: 'abono:7',
+    client_name: 'Ana Ruiz',
+    service_name: 'Adelanto cita 2026-12-12',
+    paid_at: '2026-11-23',
+    amount: 50000,
+    tip: 0,
+    method: 'transferencia',
+  };
+  assert.equal(fromPanel(inc), true);
+  assert.equal(isDeposit(inc), true);
+  assert.equal(isGiftCardSale(inc), false);
+  assert.deepEqual(toActualTxn(inc, opts), {
+    date: '2026-11-23',
+    amount: 5_000_000,
+    payee_name: 'Golden Beauty Studio',
+    imported_id: 'agendapro-tx:abono:7',
+    category: 'cat-servicios',
+    notes: 'Ana Ruiz · Adelanto cita 2026-12-12 · transferencia',
+    cleared: true,
+  });
+  const refund = toActualTxn({ ...inc, tx_id: 'abono:7:adj1', amount: -20000, paid_at: '2026-12-01' }, opts);
+  assert.equal(refund.amount, -2_000_000);
+  assert.equal(refund.imported_id, 'agendapro-tx:abono:7:adj1');
 });
